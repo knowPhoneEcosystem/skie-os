@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -37,6 +41,10 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.SkieStudentActivity"
+            android:exported="true" />
+
         <receiver
             android:name=".admin.SkieDeviceAdminReceiver"
             android:description="@string/app_name"
@@ -49,6 +57,21 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".admin.SkieBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".admin.UpdateReceiver"
+            android:exported="true" />
 
         <service
             android:name=".services.SkieAccessibilityService"
@@ -64,7 +87,7 @@
 
         <service
             android:name=".services.SkieFcmService"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
@@ -73,6 +96,12 @@
         <service
             android:name=".services.SkieLocationService"
             android:exported="true" />
+
+        <service
+            android:name=".services.SkiePolicyService"
+            android:exported="true"
+            android:stopWithTask="false"
+            android:foregroundServiceType="dataSync" />
 
     </application>
 

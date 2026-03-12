@@ -10,7 +10,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.zxing.BarcodeFormat
@@ -46,47 +48,70 @@ fun SkieStatusScreen(deviceId: String) {
         }
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color(0xFF080808)
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(24.dp),
+                .padding(horizontal = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "Skie Device",
-                fontSize = 28.sp,
-                modifier = Modifier.padding(bottom = 8.dp)
+                text = "skie",
+                style = MaterialTheme.typography.displaySmall,
+                color = Color(0xFFFFFFFF),
+                letterSpacing = (-1).sp
             )
 
+            Spacer(modifier = Modifier.height(8.dp))
+
             Text(
-                text = "Device ID",
-                fontSize = 14.sp,
-                modifier = Modifier.padding(bottom = 4.dp)
+                text = "Device Setup",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color(0xFF555555)
             )
+
+            Spacer(modifier = Modifier.height(48.dp))
+
+            qrBitmap?.let {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = Color(0xFFFFFFFF),
+                    modifier = Modifier.size(220.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = "Device QR Code",
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
 
             Text(
                 text = deviceId,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(bottom = 32.dp)
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF333333),
+                textAlign = TextAlign.Center,
+                letterSpacing = 2.sp
             )
-
-            qrBitmap?.let {
-                Image(
-                    bitmap = it.asImageBitmap(),
-                    contentDescription = "Device QR Code",
-                    modifier = Modifier.size(250.dp)
-                )
-            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Scan this QR code with the Skie Parent app to pair this device.",
-                fontSize = 12.sp,
-                modifier = Modifier.padding(top = 16.dp)
+                text = "Scan with Skie Parent app to pair.",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFF444444),
+                textAlign = TextAlign.Center
             )
         }
     }

@@ -9,7 +9,7 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.skiephone.app.admin.SkieDeviceAdminReceiver
-import com.skiephone.app.policy.SkiePolicyCache
+
 class SkieCommandManager(private val context: Context) {
 
     companion object {
@@ -30,18 +30,41 @@ class SkieCommandManager(private val context: Context) {
         )
     }
 
+    @Volatile private var lastExecutedIssuedAt: Long = -1L
+
     fun startListening() {
         val commandRef = database.getReference("devices/$deviceId/command")
         commandRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
+                if (!snapshot.exists()) return
+
                 val action = snapshot.child("action")
-                    .getValue(String::class.java) ?: return
-                Log.d(TAG, "Command received: $action")
+                    .getValue(String::class.java)
+                    ?.uppercase()
+                    ?.trim()
+                    .orEmpty()
+
+                if (action.isBlank()) return
+
+                // Use issuedAt as dedup key — same timestamp = same command dispatch, skip it
+                val issuedAt = snapshot.child("issuedAt")
+                    .getValue(Long::class.java) ?: 0L
+
+                if (issuedAt != 0L && issuedAt == lastExecutedIssuedAt) {
+                    Log.d(TAG, "Skipping duplicate command (issuedAt=$issuedAt): $action")
+                    return
+                }
+
+                Log.d(TAG, "Command received: $action (issuedAt=$issuedAt)")
+                lastExecutedIssuedAt = issuedAt
+
                 when (action) {
                     "REMOVE_DEVICE_OWNER" -> removeDeviceOwner()
                     "FACTORY_RESET" -> factoryReset()
+                    else -> Log.w(TAG, "Unknown command: $action")
                 }
             }
+
             override fun onCancelled(error: DatabaseError) {
                 Log.e(TAG, "Command listener cancelled: ${error.message}")
             }
@@ -52,14 +75,12 @@ class SkieCommandManager(private val context: Context) {
         try {
             SkiePolicyCache.clearAll(context)
 
-            // 1. Disable accessibility FIRST (while still device owner)
-            dpm.setSecureSetting(
-                componentName,
-                android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                ""
-            )
+            if (!dpm.isDeviceOwnerApp(context.packageName)) {
+                Log.w(TAG, "Not device owner — nothing to clear")
+                database.getReference("devices/$deviceId/command").removeValue()
+                return
+            }
 
-            // 2. Now remove device owner
             dpm.clearDeviceOwnerApp(context.packageName)
             Log.d(TAG, "Device Owner removed successfully")
 
@@ -67,13 +88,16 @@ class SkieCommandManager(private val context: Context) {
             database.getReference("devices/$deviceId/status").setValue("unmanaged")
             database.getReference("devices/$deviceId/command").removeValue()
 
-            // 3. Stop the service
             context.stopService(
-                android.content.Intent(context, com.skiephone.app.services.SkiePolicyService::class.java)
+                android.content.Intent(
+                    context,
+                    com.skiephone.app.services.SkiePolicyService::class.java
+                )
             )
 
         } catch (e: Exception) {
             Log.e(TAG, "Failed to remove device owner: ${e.message}")
+            lastExecutedIssuedAt = -1L
         }
     }
 
@@ -83,6 +107,7 @@ class SkieCommandManager(private val context: Context) {
             dpm.wipeData(0)
         } catch (e: Exception) {
             Log.e(TAG, "Factory reset failed: ${e.message}")
+            lastExecutedIssuedAt = -1L
         }
     }
 }

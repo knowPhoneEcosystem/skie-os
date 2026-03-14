@@ -1,69 +1,33 @@
 package com.skiephone.app.policy
 
 import android.content.Context
-import android.util.Log
+import com.google.firebase.database.DataSnapshot
 
 object SkiePolicyCache {
 
-    private const val PREFS_NAME = "skie_policy_cache"
+    private const val PREFS = "skie_policy"
 
-    // Policy keys
-    private const val KEY_CAMERA_DISABLED = "cameraDisabled"
-    private const val KEY_SCHOOL_MODE_ENABLED = "schoolModeEnabled"
-    private const val KEY_SCREEN_LOCK_ENABLED = "screenLockEnabled"
-
-    // Category keys
-    private const val KEY_ESSENTIAL_APPS_ENABLED = "essentialAppsEnabled"
-    private const val KEY_SCHOOL_APPS_ENABLED = "schoolAppsEnabled"
-
-    fun save(
-        context: Context,
-        cameraDisabled: Boolean,
-        schoolModeEnabled: Boolean,
-        screenLockEnabled: Boolean
-    ) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_CAMERA_DISABLED, cameraDisabled)
-            .putBoolean(KEY_SCHOOL_MODE_ENABLED, schoolModeEnabled)
-            .putBoolean(KEY_SCREEN_LOCK_ENABLED, screenLockEnabled)
-            .apply()
+    fun save(context: Context, snapshot: DataSnapshot) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.edit().apply {
+            putBoolean("cameraDisabled", snapshot.child("cameraDisabled").getValue(Boolean::class.java) ?: false)
+            putBoolean("schoolModeEnabled", snapshot.child("schoolModeEnabled").getValue(Boolean::class.java) ?: false)
+            putBoolean("screenLockEnabled", snapshot.child("screenLockEnabled").getValue(Boolean::class.java) ?: false)
+            putBoolean("kioskMode", snapshot.child("kioskMode").getValue(Boolean::class.java) ?: false)
+            putString("focusMode", snapshot.child("focusMode").getValue(String::class.java) ?: "none")
+            putString("focusApp", snapshot.child("focusApp").getValue(String::class.java))
+            putString("focusIssuedBy", snapshot.child("focusIssuedBy").getValue(String::class.java))
+            apply()
+        }
     }
-
-    fun saveCategories(
-        context: Context,
-        essentialAppsEnabled: Boolean,
-        schoolAppsEnabled: Boolean
-    ) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_ESSENTIAL_APPS_ENABLED, essentialAppsEnabled)
-            .putBoolean(KEY_SCHOOL_APPS_ENABLED, schoolAppsEnabled)
-            .apply()
-    }
-
-    fun getCameraDisabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_CAMERA_DISABLED, false)
-
-    fun getSchoolModeEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_SCHOOL_MODE_ENABLED, false)
-
-    fun getScreenLockEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_SCREEN_LOCK_ENABLED, false)
-
-    fun getEssentialAppsEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_ESSENTIAL_APPS_ENABLED, true)
-
-    fun getSchoolAppsEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_SCHOOL_APPS_ENABLED, true)
 
     fun clearAll(context: Context) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().clear().apply()
-        Log.d("SkiePolicyCache", "Cache cleared")
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
+    fun getFocusMode(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("focusMode", "none") ?: "none"
+
+    fun isSchoolModeEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("schoolModeEnabled", false)
 }

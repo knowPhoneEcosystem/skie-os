@@ -6,6 +6,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.firebase.database.DataSnapshot
@@ -19,22 +20,31 @@ import com.skiephone.app.policy.SkieUpdateManager
 class SkiePolicyService : Service() {
 
     private lateinit var policyEngine: SkiePolicyEngine
+    private lateinit var batteryManager: SkieBatteryManager
+    private lateinit var installedAppsManager: SkieInstalledAppsManager
+    private lateinit var locationManager: SkieLocationManager
     private var deviceId: String = ""
 
     override fun onCreate() {
         super.onCreate()
         startForeground()
 
-        deviceId = android.provider.Settings.Secure.getString(
-            contentResolver,
-            android.provider.Settings.Secure.ANDROID_ID
-        )
+        deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
 
         policyEngine = SkiePolicyEngine(this)
-        policyEngine.startListening()
+        policyEngine.start()
 
         SkieUpdateManager(this).startWatching()
         SkieCommandManager(this).startListening()
+
+        batteryManager = SkieBatteryManager(this)
+        batteryManager.start()
+
+        installedAppsManager = SkieInstalledAppsManager(this)
+        installedAppsManager.sync()
+
+        locationManager = SkieLocationManager(this, deviceId)
+        locationManager.startListening()
 
         setupOnlinePresence()
 
@@ -46,24 +56,18 @@ class SkiePolicyService : Service() {
         val onlineRef = db.getReference("devices/$deviceId/online")
         val lastSeenRef = db.getReference("devices/$deviceId/lastSeen")
 
-        // Listen to Firebase connection state — re-registers onDisconnect on every reconnect
         val connectedRef = db.getReference(".info/connected")
         connectedRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val connected = snapshot.getValue(Boolean::class.java) ?: false
                 if (connected) {
-                    // Re-register onDisconnect every time we reconnect
                     onlineRef.onDisconnect().setValue(false)
-                    lastSeenRef.onDisconnect().setValue(
-                        com.google.firebase.database.ServerValue.TIMESTAMP
-                    )
+                    lastSeenRef.onDisconnect().setValue(com.google.firebase.database.ServerValue.TIMESTAMP)
                     onlineRef.setValue(true)
-                    lastSeenRef.setValue(
-                        com.google.firebase.database.ServerValue.TIMESTAMP
-                    )
+                    lastSeenRef.setValue(com.google.firebase.database.ServerValue.TIMESTAMP)
                     Log.d(TAG, "Firebase connected — online: true")
                 } else {
-                    Log.d(TAG, "Firebase disconnected — waiting for server timeout")
+                    Log.d(TAG, "Firebase disconnected")
                 }
             }
             override fun onCancelled(error: DatabaseError) {
@@ -76,21 +80,18 @@ class SkiePolicyService : Service() {
         val channelId = "skie_policy_service"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                channelId,
-                "Skie Device Management",
-                NotificationManager.IMPORTANCE_LOW
+                channelId, "Skie Device Management", NotificationManager.IMPORTANCE_LOW
             ).apply {
                 setShowBadge(false)
                 setSound(null, null)
             }
-            val nm = getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
-        val notification = NotificationCompat.Builder(this, channelId)
+        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
             .setContentTitle("Skie")
             .setContentText("Device is managed")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
             .setSilent(true)
             .build()
         try {
@@ -101,11 +102,15 @@ class SkiePolicyService : Service() {
         }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return START_STICKY
-    }
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        super.onDestroy()
+        batteryManager.stop()
+        locationManager.stop()
+    }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val restartIntent = Intent(applicationContext, SkiePolicyService::class.java)

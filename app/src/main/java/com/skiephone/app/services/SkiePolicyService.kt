@@ -23,6 +23,8 @@ class SkiePolicyService : Service() {
     private lateinit var batteryManager: SkieBatteryManager
     private lateinit var installedAppsManager: SkieInstalledAppsManager
     private lateinit var locationManager: SkieLocationManager
+    private lateinit var travelManager: SkieTravelManager
+    private lateinit var sosManager: SkieSOSManager
     private var deviceId: String = ""
 
     override fun onCreate() {
@@ -45,6 +47,12 @@ class SkiePolicyService : Service() {
 
         locationManager = SkieLocationManager(this, deviceId)
         locationManager.startListening()
+
+        travelManager = SkieTravelManager(this, deviceId)
+        travelManager.startListening()
+
+        sosManager = SkieSOSManager(this, deviceId, travelManager)
+        sosManager.startListening()
 
         setupOnlinePresence()
 
@@ -87,11 +95,11 @@ class SkiePolicyService : Service() {
             }
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
-        val notification = androidx.core.app.NotificationCompat.Builder(this, channelId)
+        val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Skie")
             .setContentText("Device is managed")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setSilent(true)
             .build()
         try {
@@ -110,6 +118,8 @@ class SkiePolicyService : Service() {
         super.onDestroy()
         batteryManager.stop()
         locationManager.stop()
+        travelManager.stop()
+        sosManager.stop()
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {

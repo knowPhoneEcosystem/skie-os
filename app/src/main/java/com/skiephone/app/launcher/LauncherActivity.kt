@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,6 +44,9 @@ import android.provider.Settings
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import com.skiephone.app.admin.SkieDeviceAdminReceiver
+import com.skiephone.app.services.SkieSOSManager
+import com.skiephone.app.services.SkieTravelManager
+import android.util.Log as ALog
 
 data class EffectiveApp(
     val packageName: String = "",
@@ -302,6 +306,8 @@ fun LauncherScreen(
 ) {
     val context = LocalContext.current
     var allEffectiveApps by remember { mutableStateOf<List<EffectiveApp>>(emptyList()) }
+    val travelManager = remember(deviceId) { SkieTravelManager(context, deviceId).also { it.startListening() } }
+    val sosManager = remember(deviceId) { SkieSOSManager(context, deviceId, travelManager).also { it.startListening() } }
 
     val focusMode = focusModeState.value
     val focusApp  = focusAppState.value
@@ -410,6 +416,14 @@ fun LauncherScreen(
                 items(visibleApps) { app ->
                     EffectiveAppIcon(app = app)
                 }
+                // Travel Mode icon — only outside focus mode
+                if (focusMode == "none") {
+                    item { TravelModeIcon(travelManager = travelManager) }
+                }
+                // SOS icon — only outside focus mode
+                if (focusMode == "none") {
+                    item { SOSIcon(onConfirmed = { sosManager.triggerSOS() }) }
+                }
             }
         }
     }
@@ -479,6 +493,132 @@ fun EffectiveAppIcon(app: EffectiveApp) {
             text = app.appName,
             style = MaterialTheme.typography.labelMedium,
             color = Color(0xFF1A1A2E),
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+// ── SOS Icon ──────────────────────────────────────────────────────────────
+@Composable
+fun SOSIcon(onConfirmed: () -> Unit) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Send SOS?", fontWeight = FontWeight.SemiBold) },
+            text = { Text("This will immediately alert your parent, call them, and share your live location.") },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false; onConfirmed() }) {
+                    Text("Yes, send SOS", color = Color(0xFFFF3B30), fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    Column(
+        modifier = Modifier.clickable { showDialog = true },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color(0xFFFF3B30)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = "🆘", fontSize = androidx.compose.ui.unit.TextUnit(28f, androidx.compose.ui.unit.TextUnitType.Sp))
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "SOS",
+            style = MaterialTheme.typography.labelMedium,
+            color = Color(0xFFFF3B30),
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            maxLines = 1
+        )
+    }
+}
+
+// ── Travel Mode Icon ──────────────────────────────────────────────────────
+@Composable
+fun TravelModeIcon(travelManager: SkieTravelManager) {
+    var showDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val deviceId = remember {
+        android.provider.Settings.Secure.getString(
+            context.contentResolver, android.provider.Settings.Secure.ANDROID_ID
+        )
+    }
+
+    // Listen to current travel mode state
+    var travelActive by remember { mutableStateOf(false) }
+    DisposableEffect(deviceId) {
+        val ref = com.google.firebase.database.FirebaseDatabase.getInstance()
+            .getReference("devices/$deviceId/travelMode/active")
+        val listener = object : com.google.firebase.database.ValueEventListener {
+            override fun onDataChange(snap: com.google.firebase.database.DataSnapshot) {
+                travelActive = snap.getValue(Boolean::class.java) ?: false
+            }
+            override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
+        }
+        ref.addValueEventListener(listener)
+        onDispose { ref.removeEventListener(listener) }
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Enable Travel Mode?", fontWeight = FontWeight.SemiBold) },
+            text = { Text("Your parent will be able to track your journey live until you arrive at your destination.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDialog = false
+                    // Write travelMode active=true to RTDB — parent sets destination from dashboard
+                    com.google.firebase.database.FirebaseDatabase.getInstance()
+                        .getReference("devices/$deviceId/travelMode")
+                        .updateChildren(mapOf(
+                            "active" to true,
+                            "triggeredBy" to "student",
+                            "startedAt" to System.currentTimeMillis()
+                        ))
+                    travelManager.startListening()
+                }) {
+                    Text("Enable", color = Color(0xFF6366F1), fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    Column(
+        modifier = Modifier.clickable { if (!travelActive) showDialog = true },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(if (travelActive) Color(0xFF6366F1) else Color(0xFFEEEEFF)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "🧭",
+                fontSize = androidx.compose.ui.unit.TextUnit(28f, androidx.compose.ui.unit.TextUnitType.Sp)
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = if (travelActive) "Travelling" else "Travel",
+            style = MaterialTheme.typography.labelMedium,
+            color = if (travelActive) Color(0xFF6366F1) else Color(0xFF1A1A2E),
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis

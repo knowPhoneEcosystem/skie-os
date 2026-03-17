@@ -215,7 +215,12 @@ class SkiePolicyEngine(private val context: Context) {
 
     private fun grantRequiredPermissions() {
         if (!isDeviceOwner()) return
-        listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION).forEach {
+        listOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.CALL_PHONE,
+            Manifest.permission.READ_PHONE_STATE,
+        ).forEach {
             try {
                 dpm.setPermissionGrantState(admin, context.packageName, it, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
             } catch (e: Exception) { Log.e(TAG, "grant $it: ${e.message}") }

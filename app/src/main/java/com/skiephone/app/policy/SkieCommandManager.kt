@@ -69,6 +69,7 @@ class SkieCommandManager(private val context: Context) {
                     "INSTALL_APP"           -> installApp(snapshot)
                     "UNINSTALL_APP"         -> uninstallApp(snapshot)
                     "APPLY_HARDENING_STEP"  -> applyHardeningStep(snapshot)
+                    "REMOVE_HARDENING_STEP" -> removeHardeningStep(snapshot)
                     "CHECK_COMPLIANCE"      -> checkCompliance()
                     "POWER_OFF_DISABLE"     -> setPowerOffDisabled(snapshot)
                     "SUSPEND_APP"           -> suspendApp(snapshot, true)
@@ -347,9 +348,38 @@ class SkieCommandManager(private val context: Context) {
         try {
             Log.d(TAG, "applyHardeningStep: $stepId")
             val engine = SkiePolicyEngine(context)
-            engine.applyHardeningStep(stepId)
+            if (stepId == "dns_filtering") {
+                // DNS step is async (network check on background thread)
+                // Pass callback to write hardenLog only after actual success
+                engine.applyDnsFiltering(true) {
+                    database.getReference("devices/$deviceId/hardenLog/dns_filtering")
+                        .setValue(mapOf("success" to true, "ts" to System.currentTimeMillis()))
+                    Log.d(TAG, "applyHardeningStep: dns_filtering hardenLog written ✓")
+                }
+            } else {
+                engine.applyHardeningStep(stepId)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "applyHardeningStep: $stepId failed — ${e.message}")
+        }
+        database.getReference("devices/$deviceId/command").removeValue()
+    }
+
+
+    private fun removeHardeningStep(snapshot: DataSnapshot) {
+        val stepId = snapshot.child("stepId").getValue(String::class.java) ?: run {
+            Log.w(TAG, "removeHardeningStep: no stepId in command")
+            database.getReference("devices/$deviceId/command").removeValue()
+            return
+        }
+        try {
+            Log.d(TAG, "removeHardeningStep: $stepId")
+            val engine = SkiePolicyEngine(context)
+            engine.removeHardeningStep(stepId)
+            // Clear hardenLog entry so dashboard reflects removed state
+            database.getReference("devices/$deviceId/hardenLog/$stepId").removeValue()
+        } catch (e: Exception) {
+            Log.e(TAG, "removeHardeningStep: $stepId failed — ${e.message}")
         }
         database.getReference("devices/$deviceId/command").removeValue()
     }
@@ -456,17 +486,17 @@ class SkieCommandManager(private val context: Context) {
 
     private fun updateEffectiveAppStatus(packageName: String, status: String) {
         try {
-            val ref = database.getReference("devices/$deviceId/effectiveApps")
-            ref.get()
-                .addOnSuccessListener { snap ->
-                    try {
-                        snap.children.find {
-                            it.child("packageName").getValue(String::class.java) == packageName
-                        }?.ref?.child("status")?.setValue(status)
-                        Log.d(TAG, "updateEffectiveAppStatus: $packageName → $status")
-                    } catch (e: Exception) { Log.e(TAG, "updateEffectiveAppStatus inner: ${e.message}") }
-                }
-                .addOnFailureListener { Log.e(TAG, "updateEffectiveAppStatus get failed: ${it.message}") }
+        val ref = database.getReference("devices/$deviceId/effectiveApps")
+        ref.get()
+            .addOnSuccessListener { snap ->
+                try {
+                snap.children.find {
+                    it.child("packageName").getValue(String::class.java) == packageName
+                }?.ref?.child("status")?.setValue(status)
+                Log.d(TAG, "updateEffectiveAppStatus: $packageName → $status")
+                } catch (e: Exception) { Log.e(TAG, "updateEffectiveAppStatus inner: ${e.message}") }
+            }
+            .addOnFailureListener { Log.e(TAG, "updateEffectiveAppStatus get failed: ${it.message}") }
         } catch (e: Exception) { Log.e(TAG, "updateEffectiveAppStatus: ${e.message}") }
     }
 

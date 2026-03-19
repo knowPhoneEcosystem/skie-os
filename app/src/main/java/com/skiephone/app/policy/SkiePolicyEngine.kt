@@ -147,9 +147,11 @@ class SkiePolicyEngine(private val context: Context) {
                     val screenLockEnabled = snapshot.child("screenLockEnabled").getValue(Boolean::class.java) ?: false
                     val focusMode         = snapshot.child("focusMode").getValue(String::class.java) ?: "none"
                     val focusApp          = snapshot.child("focusApp").getValue(String::class.java)
+                    val dnsEnabled        = snapshot.child("dnsFilteringEnabled").getValue(Boolean::class.java) ?: true
                     Log.d(TAG, "policy: camera=$cameraDisabled school=$schoolModeEnabled lock=$screenLockEnabled focus=$focusMode")
                     SkiePolicyCache.save(context, snapshot)
                     setCameraDisabled(cameraDisabled)
+                    applyDnsFiltering(dnsEnabled)
                     _schoolModeEnabled = schoolModeEnabled
                     setSchoolMode(schoolModeEnabled)
                     if (screenLockEnabled) lockScreen()
@@ -227,6 +229,7 @@ class SkiePolicyEngine(private val context: Context) {
         if (!isDeviceOwner()) return
         try {
             dpm.setUninstallBlocked(admin, context.packageName, true)
+            applyDnsFiltering(true) // step 31 — lock DNS to NextDNS
             dpm.addUserRestriction(admin, UserManager.DISALLOW_FACTORY_RESET)
             dpm.addUserRestriction(admin, UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)
             dpm.addUserRestriction(admin, UserManager.DISALLOW_MODIFY_ACCOUNTS)
@@ -353,10 +356,40 @@ class SkiePolicyEngine(private val context: Context) {
                 "screen_capture_disabled"      -> dpm.setScreenCaptureDisabled(admin, true)
                 "suspend_play_store"           -> suspendPlayStore()
                 "block_uninstall_skie"         -> dpm.setUninstallBlocked(admin, context.packageName, true)
+                "dns_filtering"                -> applyDnsFiltering(true)
                 else -> Log.w(TAG, "applyHardeningStep: unknown stepId=$stepId")
             }
             Log.d(TAG, "applyHardeningStep: $stepId applied")
         } catch (e: Exception) { Log.e(TAG, "applyHardeningStep $stepId: ${e.message}") }
+    }
+
+
+    /**
+     * Remove a single hardening step — reverse of applyHardeningStep.
+     * Called by REMOVE_HARDENING_STEP command from Owner Dashboard toggle.
+     */
+    fun removeHardeningStep(stepId: String) {
+        if (!isDeviceOwner()) return
+        try {
+            when (stepId) {
+                "disallow_factory_reset"           -> dpm.clearUserRestriction(admin, UserManager.DISALLOW_FACTORY_RESET)
+                "disallow_safe_boot"               -> dpm.clearUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT)
+                "disallow_usb_file_transfer"       -> dpm.clearUserRestriction(admin, UserManager.DISALLOW_USB_FILE_TRANSFER)
+                "disallow_modify_accounts"         -> dpm.clearUserRestriction(admin, UserManager.DISALLOW_MODIFY_ACCOUNTS)
+                "disallow_install_unknown_sources" -> dpm.clearUserRestriction(admin, UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)
+                "disallow_debugging_features"      -> dpm.clearUserRestriction(admin, UserManager.DISALLOW_DEBUGGING_FEATURES)
+                "disallow_airplane_mode"           -> dpm.clearUserRestriction(admin, UserManager.DISALLOW_AIRPLANE_MODE)
+                "disallow_add_user"                -> dpm.clearUserRestriction(admin, UserManager.DISALLOW_ADD_USER)
+                "disallow_user_switch"             -> dpm.clearUserRestriction(admin, UserManager.DISALLOW_USER_SWITCH)
+                "disallow_config_mobile_networks"  -> dpm.clearUserRestriction(admin, UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS)
+                "screen_capture_disabled"          -> dpm.setScreenCaptureDisabled(admin, false)
+                "suspend_play_store"               -> dpm.setPackagesSuspended(admin, arrayOf(PLAY_STORE_PKG), false)
+                "block_uninstall_skie"             -> dpm.setUninstallBlocked(admin, context.packageName, false)
+                "dns_filtering"                    -> applyDnsFiltering(false)
+                else -> Log.w(TAG, "removeHardeningStep: unknown stepId=$stepId")
+            }
+            Log.d(TAG, "removeHardeningStep: $stepId removed")
+        } catch (e: Exception) { Log.e(TAG, "removeHardeningStep $stepId: ${e.message}") }
     }
 
     fun setPowerOffDisabled(disabled: Boolean) {
@@ -392,6 +425,90 @@ class SkiePolicyEngine(private val context: Context) {
         } catch (e: Exception) { Log.e(TAG, "repinLauncherHome: ${e.message}") }
     }
 
+
+    /**
+     * Apply or remove DNS filtering via Private DNS (DNS-over-TLS).
+     * Hostname fetched from Firestore skieConfig/dnsConfig so owner can change it remotely.
+     * Child cannot override — setGlobalPrivateDns is device-owner only and greys out Settings.
+     */
+    fun applyDnsFiltering(enabled: Boolean, onSuccess: (() -> Unit)? = null) {
+        if (!isDeviceOwner()) return
+        try {
+            if (enabled) {
+                FirebaseFirestore.getInstance().document("skieConfig/dnsConfig")
+                    .get()
+                    .addOnSuccessListener { snap ->
+                        val hostname = snap.getString("hostname") ?: "28a418.dns.nextdns.io"
+                        applyPrivateDns(hostname, onSuccess)
+                    }
+                    .addOnFailureListener {
+                        applyPrivateDns("28a418.dns.nextdns.io", onSuccess)
+                    }
+            } else {
+                removePrivateDns(onSuccess)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "applyDnsFiltering: ${e.message}")
+        }
+    }
+
+
+    private fun applyPrivateDns(hostname: String, onSuccess: (() -> Unit)? = null) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+            Log.w(TAG, "applyPrivateDns: requires API 29+, current=${android.os.Build.VERSION.SDK_INT}")
+            return
+        }
+        // setGlobalPrivateDnsModeSpecifiedHost does a TCP connectivity check — MUST run off main thread
+        Thread {
+            try {
+                val method = dpm.javaClass.getMethod(
+                    "setGlobalPrivateDnsModeSpecifiedHost",
+                    android.content.ComponentName::class.java,
+                    String::class.java
+                )
+                val result = method.invoke(dpm, admin, hostname)
+                val code = (result as? Int) ?: result?.toString()?.toIntOrNull() ?: -1
+                when (code) {
+                    0 -> {
+                        Log.d(TAG, "applyPrivateDns: DNS locked to $hostname ✓")
+                        onSuccess?.invoke() // signal caller to write hardenLog
+                    }
+                    1    -> Log.e(TAG, "applyPrivateDns: FAILURE_SETTING — check device owner status")
+                    2    -> Log.e(TAG, "applyPrivateDns: HOST_NOT_SERVING — TLS check failed for $hostname")
+                    else -> Log.e(TAG, "applyPrivateDns: unknown code=$code result=$result")
+                }
+            } catch (e: java.lang.reflect.InvocationTargetException) {
+                val cause = e.cause ?: e.targetException
+                Log.e(TAG, "applyPrivateDns cause: ${cause?.javaClass?.name} — ${cause?.message}")
+            } catch (e: Exception) {
+                Log.e(TAG, "applyPrivateDns: ${e.javaClass.name} — ${e.message}")
+            }
+        }.start()
+    }
+
+    private fun removePrivateDns(onSuccess: (() -> Unit)? = null) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return
+        Thread {
+            try {
+                val method = dpm.javaClass.getMethod(
+                    "setGlobalPrivateDnsModeOpportunistic",
+                    android.content.ComponentName::class.java
+                )
+                val result = method.invoke(dpm, admin)
+                val code = (result as? Int) ?: result?.toString()?.toIntOrNull() ?: -1
+                if (code == 0) {
+                    Log.d(TAG, "removePrivateDns: DNS filtering removed ✓")
+                    onSuccess?.invoke()
+                } else Log.e(TAG, "removePrivateDns: failed code=$code")
+            } catch (e: java.lang.reflect.InvocationTargetException) {
+                val cause = e.cause ?: e.targetException
+                Log.e(TAG, "removePrivateDns cause: ${cause?.javaClass?.name} — ${cause?.message}")
+            } catch (e: Exception) {
+                Log.e(TAG, "removePrivateDns: ${e.javaClass.name} — ${e.message}")
+            }
+        }.start()
+    }
+
     fun isDeviceOwner() = try { dpm.isDeviceOwnerApp(context.packageName) } catch (e: Exception) { false }
 
     fun requestDeviceAdmin() {
@@ -421,5 +538,6 @@ class SkiePolicyEngine(private val context: Context) {
         const val STEP_SCREEN_CAPTURE_DISABLED       = "screen_capture_disabled"
         const val STEP_SUSPEND_PLAY_STORE            = "suspend_play_store"
         const val STEP_BLOCK_UNINSTALL               = "block_uninstall_skie"
+        const val STEP_DNS_FILTERING                 = "dns_filtering"
     }
 }

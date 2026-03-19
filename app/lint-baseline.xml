@@ -1,0 +1,1203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<issues format="6" by="lint 9.1.0" type="baseline" client="gradle" dependencies="false" name="AGP (9.1.0)" variant="all" version="9.1.0">
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by ActivityManager.moveTaskToFront: android.permission.REORDER_TASKS"
+        errorLine1="            am.moveTaskToFront(focusTask.id, ActivityManager.MOVE_TASK_WITH_HOME)"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/launcher/LauncherActivity.kt"
+            line="257"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by PackageInstaller.uninstall: android.permission.DELETE_PACKAGES or android.permission.REQUEST_DELETE_PACKAGES"
+        errorLine1="            packageInstaller.uninstall(packageName, pendingIntent.intentSender)"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/policy/SkieCommandManager.kt"
+            line="238"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by TelephonyManager.getImei: android.permission.READ_PRIVILEGED_PHONE_STATE"
+        errorLine1="                tm.getImei(0)"
+        errorLine2="                ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkiePolicyService.kt"
+            line="76"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="MissingPermission"
+        message="Missing permissions required by TelephonyManager.getDeviceId: android.permission.READ_PRIVILEGED_PHONE_STATE"
+        errorLine1="                tm.deviceId"
+        errorLine2="                ~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkiePolicyService.kt"
+            line="79"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="GestureBackNavigation"
+        message="`onBackPressed` is no longer called for back gestures; migrate to AndroidX&apos;s backward compatible `OnBackPressedDispatcher`"
+        errorLine1="    override fun onBackPressed() {"
+        errorLine2="                 ~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/launcher/LauncherActivity.kt"
+            line="201"
+            column="18"/>
+    </issue>
+
+    <issue
+        id="InlinedApi"
+        message="Field requires API level 33 (current min is 31): `android.content.Context#RECEIVER_NOT_EXPORTED`"
+        errorLine1="        registerReceiver(focusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)"
+        errorLine2="                                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/launcher/LauncherActivity.kt"
+            line="138"
+            column="49"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="InvalidFragmentVersionForActivityResult"
+        message="Upgrade Fragment version to at least 1.3.0."
+        errorLine1="    private val locationPermissionRequest = registerForActivityResult("
+        errorLine2="                                            ^">
+        <location
+            file="src/main/java/com/skiephone/app/MainActivity.kt"
+            line="14"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="AndroidGradlePluginVersion"
+        message="A newer version of Gradle than 9.3.1 is available: 9.4.0"
+        errorLine1="distributionUrl=https\://services.gradle.org/distributions/gradle-9.3.1-bin.zip"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="$HOME/Documents/Projects/skieOs/skiePhone/gradle/wrapper/gradle-wrapper.properties"
+            line="5"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of com.google.firebase:firebase-bom than 33.1.0 is available: 34.10.0"
+        errorLine1="    implementation(platform(&quot;com.google.firebase:firebase-bom:33.1.0&quot;))"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="86"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.core:core-ktx than 1.10.1 is available: 1.18.0"
+        errorLine1="coreKtx = &quot;1.10.1&quot;"
+        errorLine2="          ~~~~~~~~">
+        <location
+            file="$HOME/Documents/Projects/skieOs/skiePhone/gradle/libs.versions.toml"
+            line="3"
+            column="11"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.test.ext:junit than 1.1.5 is available: 1.3.0"
+        errorLine1="junitVersion = &quot;1.1.5&quot;"
+        errorLine2="               ~~~~~~~">
+        <location
+            file="$HOME/Documents/Projects/skieOs/skiePhone/gradle/libs.versions.toml"
+            line="5"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.test.espresso:espresso-core than 3.5.1 is available: 3.7.0"
+        errorLine1="espressoCore = &quot;3.5.1&quot;"
+        errorLine2="               ~~~~~~~">
+        <location
+            file="$HOME/Documents/Projects/skieOs/skiePhone/gradle/libs.versions.toml"
+            line="6"
+            column="16"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.lifecycle:lifecycle-runtime-ktx than 2.6.1 is available: 2.10.0"
+        errorLine1="lifecycleRuntimeKtx = &quot;2.6.1&quot;"
+        errorLine2="                      ~~~~~~~">
+        <location
+            file="$HOME/Documents/Projects/skieOs/skiePhone/gradle/libs.versions.toml"
+            line="7"
+            column="23"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.activity:activity-compose than 1.8.0 is available: 1.13.0"
+        errorLine1="activityCompose = &quot;1.8.0&quot;"
+        errorLine2="                  ~~~~~~~">
+        <location
+            file="$HOME/Documents/Projects/skieOs/skiePhone/gradle/libs.versions.toml"
+            line="8"
+            column="19"/>
+    </issue>
+
+    <issue
+        id="GradleDependency"
+        message="A newer version of androidx.compose:compose-bom than 2024.09.00 is available: 2026.03.00"
+        errorLine1="composeBom = &quot;2024.09.00&quot;"
+        errorLine2="             ~~~~~~~~~~~~">
+        <location
+            file="$HOME/Documents/Projects/skieOs/skiePhone/gradle/libs.versions.toml"
+            line="10"
+            column="14"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-android than 1.7.3 is available: 1.10.2"
+        errorLine1="    implementation(&quot;org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="92"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="NewerVersionAvailable"
+        message="A newer version of org.jetbrains.kotlin.plugin.compose than 2.2.10 is available: 2.3.20"
+        errorLine1="kotlin = &quot;2.2.10&quot;"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="$HOME/Documents/Projects/skieOs/skiePhone/gradle/libs.versions.toml"
+            line="9"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="PermissionImpliesUnsupportedChromeOsHardware"
+        message="Permission exists without corresponding hardware `&lt;uses-feature android:name=&quot;android.hardware.telephony&quot; android:required=&quot;false&quot;>` tag"
+        errorLine1="    &lt;uses-permission android:name=&quot;android.permission.CALL_PHONE&quot; />"
+        errorLine2="     ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="16"
+            column="6"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="        Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/launcher/LauncherActivity.kt"
+            line="60"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="        android.provider.Settings.Secure.getString("
+        errorLine2="        ^">
+        <location
+            file="src/main/java/com/skiephone/app/launcher/LauncherActivity.kt"
+            line="554"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="    private val deviceId = Settings.Secure.getString("
+        errorLine2="                           ^">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkieBatteryManager.kt"
+            line="14"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="        android.provider.Settings.Secure.getString("
+        errorLine2="        ^">
+        <location
+            file="src/main/java/com/skiephone/app/policy/SkieCommandManager.kt"
+            line="31"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="        val deviceId = android.provider.Settings.Secure.getString("
+        errorLine2="                       ^">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkieFcmService.kt"
+            line="50"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="    private val deviceId = Settings.Secure.getString("
+        errorLine2="                           ^">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkieInstalledAppsManager.kt"
+            line="12"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="                    val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)"
+        errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkieLocationService.kt"
+            line="59"
+            column="36"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="    private val deviceId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)"
+        errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/policy/SkiePolicyEngine.kt"
+            line="23"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="        deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkiePolicyService.kt"
+            line="35"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getDeviceId` to get device identifiers is not recommended"
+        errorLine1="                tm.deviceId"
+        errorLine2="                ~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkiePolicyService.kt"
+            line="79"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="        val deviceId = Settings.Secure.getString("
+        errorLine2="                       ^">
+        <location
+            file="src/main/java/com/skiephone/app/ui/SkieStatusActivity.kt"
+            line="27"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="HardwareIds"
+        message="Using `getString` to get device identifiers is not recommended"
+        errorLine1="        deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/ui/SkieStudentActivity.kt"
+            line="57"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="ExportedReceiver"
+        message="Exported receiver does not require permission"
+        errorLine1="        &lt;receiver"
+        errorLine2="         ~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="79"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="ExportedService"
+        message="Exported service does not require permission"
+        errorLine1="        &lt;service"
+        errorLine2="         ~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="95"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="ExportedService"
+        message="Exported service does not require permission"
+        errorLine1="        &lt;service"
+        errorLine2="         ~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="108"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 31"
+        errorLine1="        tools:targetApi=&quot;31&quot;>"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/AndroidManifest.xml"
+            line="27"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 31"
+        errorLine1="        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/ui/SkieBaseActivity.kt"
+            line="27"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 31"
+        errorLine1="                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {"
+        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkieLocationManager.kt"
+            line="49"
+            column="21"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 31"
+        errorLine1="        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkieLocationService.kt"
+            line="30"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 31"
+        errorLine1="            val imei = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {"
+        errorLine2="                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkiePolicyService.kt"
+            line="75"
+            column="28"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 31"
+        errorLine1="        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {"
+        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkiePolicyService.kt"
+            line="121"
+            column="13"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 31"
+        errorLine1="            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {"
+        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/services/SkieSOSManager.kt"
+            line="151"
+            column="17"/>
+    </issue>
+
+    <issue
+        id="ObsoleteSdkInt"
+        message="Unnecessary; `SDK_INT` is always >= 31"
+        errorLine1="        dynamicColor &amp;&amp; Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {"
+        errorLine2="                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/ui/theme/Theme.kt"
+            line="44"
+            column="25"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.purple_200` appears to be unused"
+        errorLine1="    &lt;color name=&quot;purple_200&quot;>#FFBB86FC&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="3"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.purple_500` appears to be unused"
+        errorLine1="    &lt;color name=&quot;purple_500&quot;>#FF6200EE&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="4"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.purple_700` appears to be unused"
+        errorLine1="    &lt;color name=&quot;purple_700&quot;>#FF3700B3&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="5"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.teal_200` appears to be unused"
+        errorLine1="    &lt;color name=&quot;teal_200&quot;>#FF03DAC5&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="6"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.teal_700` appears to be unused"
+        errorLine1="    &lt;color name=&quot;teal_700&quot;>#FF018786&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="7"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.black` appears to be unused"
+        errorLine1="    &lt;color name=&quot;black&quot;>#FF000000&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="8"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UnusedResources"
+        message="The resource `R.color.white` appears to be unused"
+        errorLine1="    &lt;color name=&quot;white&quot;>#FFFFFFFF&lt;/color>"
+        errorLine2="           ~~~~~~~~~~~~">
+        <location
+            file="src/main/res/values/colors.xml"
+            line="9"
+            column="12"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                data = android.net.Uri.parse(&quot;market://details?id=$packageName&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/policy/SkieCommandManager.kt"
+            line="192"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `String.toUri` instead?"
+        errorLine1="                data = android.net.Uri.parse(&quot;market://details?id=$packageName&quot;)"
+        errorLine2="                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/policy/SkieCommandManager.kt"
+            line="192"
+            column="24"/>
+    </issue>
+
+    <issue
+        id="UseKtx"
+        message="Use the KTX extension function `SharedPreferences.edit` instead?"
+        errorLine1="        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/com/skiephone/app/policy/SkiePolicyCache.kt"
+            line="25"
+            column="9"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    implementation(platform(&quot;com.google.firebase:firebase-bom:33.1.0&quot;))"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="86"
+            column="29"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    implementation(&quot;com.google.firebase:firebase-database-ktx&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="87"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    implementation(&quot;com.google.firebase:firebase-messaging-ktx&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="88"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    implementation(&quot;com.google.firebase:firebase-auth-ktx&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="89"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    implementation(&quot;com.google.android.gms:play-services-location:21.3.0&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="90"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    implementation(&quot;com.journeyapps:zxing-android-embedded:4.3.0&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="91"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    implementation(&quot;org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="92"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    implementation(&quot;com.google.firebase:firebase-firestore-ktx&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="93"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="UseTomlInstead"
+        message="Use version catalog instead"
+        errorLine1="    implementation(&quot;com.google.firebase:firebase-storage-ktx&quot;)"
+        errorLine2="                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="build.gradle.kts"
+            line="94"
+            column="20"/>
+    </issue>
+
+</issues>

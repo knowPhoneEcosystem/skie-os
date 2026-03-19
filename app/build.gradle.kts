@@ -1,7 +1,15 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     id("com.google.gms.google-services")
+}
+
+// Load local.properties securely — never hardcode credentials
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) load(f.inputStream())
 }
 
 android {
@@ -16,21 +24,37 @@ android {
         applicationId = "com.skiephone.app"
         minSdk = 31
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.1.2"
+        versionCode = 7
+        versionName = "1.1.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file(localProps.getProperty("RELEASE_STORE_FILE") ?: "")
+            storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD") ?: ""
+            keyAlias = localProps.getProperty("RELEASE_KEY_ALIAS") ?: ""
+            keyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD") ?: ""
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
     }
+
+    lint {
+        baseline = file("lint-baseline.xml")
+        abortOnError = false
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11

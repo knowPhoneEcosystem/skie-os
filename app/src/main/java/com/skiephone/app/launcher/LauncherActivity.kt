@@ -334,6 +334,10 @@ fun LauncherScreen(
                 val name = child.child("appName").getValue(String::class.java) ?: return@forEach
                 val cat  = child.child("category").getValue(String::class.java) ?: ""
                 if (pkg == context.packageName) return@forEach
+                // Respect allowed field — false means parent toggled off (suspended)
+                val allowed = child.child("allowed").getValue(Boolean::class.java) ?: true
+                if (!allowed) return@forEach
+                // Only show if actually installed on device
                 try { pm.getPackageInfo(pkg, 0); apps.add(EffectiveApp(pkg, name, cat)) }
                 catch (e: Exception) { /* not installed, skip */ }
             }
@@ -379,6 +383,44 @@ fun LauncherScreen(
         }
         rtdbRef.addValueEventListener(listener)
         onDispose { rtdbRef.removeEventListener(listener) }
+    }
+
+    // Listen to lastInstallTs — fires when a new app installs.
+    // Rebuilds grid after 800ms delay to let PackageManager settle.
+    DisposableEffect(deviceId) {
+        val installTsRef = FirebaseDatabase.getInstance()
+            .getReference("devices/$deviceId/lastInstallTs")
+        val installListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (!snapshot.exists()) return
+                // Delay rebuild so PackageManager has time to register the new package
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    val effectiveRef = FirebaseDatabase.getInstance()
+                        .getReference("devices/$deviceId/effectiveApps")
+                    effectiveRef.get().addOnSuccessListener { snap ->
+                        if (snap.exists()) {
+                            val pm = context.packageManager
+                            val apps = mutableListOf<EffectiveApp>()
+                            snap.children.forEach { child ->
+                                val pkg  = child.child("packageName").getValue(String::class.java) ?: return@forEach
+                                val name = child.child("appName").getValue(String::class.java) ?: return@forEach
+                                val cat  = child.child("category").getValue(String::class.java) ?: ""
+                                val allowed = child.child("allowed").getValue(Boolean::class.java) ?: true
+                                if (pkg == context.packageName) return@forEach
+                                if (!allowed) return@forEach
+                                try { pm.getPackageInfo(pkg, 0); apps.add(EffectiveApp(pkg, name, cat)) }
+                                catch (e: Exception) { /* not installed yet */ }
+                            }
+                            allEffectiveApps = apps
+                            android.util.Log.d("LauncherActivity", "lastInstallTs rebuild: ${apps.size} apps")
+                        }
+                    }
+                }, 800)
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        installTsRef.addValueEventListener(installListener)
+        onDispose { installTsRef.removeEventListener(installListener) }
     }
 
     Box(

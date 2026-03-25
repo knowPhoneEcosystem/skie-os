@@ -28,6 +28,11 @@ class SkiePolicyEngine(private val context: Context) {
     // null means "use effectivePackages as-is"
     private var allowedPackages: Set<String>? = null
 
+    // globalPolicy packages — always unsuspended regardless of effectiveApps state
+    // These are provisioning-time approved apps (Calculator, Camera, Contacts etc.)
+    // Stored here so applyAppSuspension never accidentally suspends them
+    private var globalPolicyPackages: Set<String> = emptySet()
+
     // School mode — when true, only school-approved packages are unsuspended
     private var _schoolModeEnabled: Boolean = false
 
@@ -36,12 +41,25 @@ class SkiePolicyEngine(private val context: Context) {
 
     private var effectiveAppsListener: ValueEventListener? = null
     private var policyListener: ValueEventListener? = null
+    private var listenersStarted = false
 
     fun start() {
         Log.d(TAG, "start() deviceId:$deviceId isDeviceOwner:${isDeviceOwner()}")
         grantRequiredPermissions()
         hardenDevice()
         clearStaleSuspensions()
+        // Pre-load globalPolicy from RTDB cache immediately — available before Firestore auth
+        // This ensures applyAppSuspension never fires with empty globalPolicyPackages on boot
+        rtdb.getReference("devices/$deviceId/globalPolicyCache")
+            .get()
+            .addOnSuccessListener { snap ->
+                if (snap.exists()) {
+                    globalPolicyPackages = snap.children
+                        .mapNotNull { it.getValue(String::class.java) }
+                        .toSet()
+                    Log.d(TAG, "start: globalPolicyCache pre-loaded — ${globalPolicyPackages.size} packages")
+                }
+            }
         listenGlobalPolicy()
     }
 
@@ -56,8 +74,21 @@ class SkiePolicyEngine(private val context: Context) {
             .addSnapshotListener { snap, error ->
                 if (error != null) { Log.e(TAG, "globalPolicy error: ${error.message}"); return@addSnapshotListener }
                 if (snap == null || !snap.exists()) { Log.w(TAG, "globalPolicy not found"); return@addSnapshotListener }
-                listenEffectiveApps()
-                listenPolicy()
+
+                // Store globalPolicy packages — always kept unsuspended by applyAppSuspension
+                val apps = snap.get("approvedApps") as? List<Map<String, Any>> ?: emptyList()
+                globalPolicyPackages = apps.mapNotNull { it["packageName"] as? String }.toSet()
+                Log.d(TAG, "globalPolicy loaded — ${globalPolicyPackages.size} packages")
+
+                // Guard against duplicate listener registration on Firestore reconnects
+                if (!listenersStarted) {
+                    listenersStarted = true
+                    listenEffectiveApps()
+                    listenPolicy()
+                } else {
+                    // Policy packages updated — re-apply suspension with fresh globalPolicy
+                    applyAppSuspension()
+                }
             }
     }
 
@@ -78,7 +109,16 @@ class SkiePolicyEngine(private val context: Context) {
                             val pkg = child.child("packageName").getValue(String::class.java) ?: return@forEach
                             allPkgs.add(pkg)
                             // allowed field: true = visible on launcher, false = parent toggled off
-                            val allowed = child.child("allowed").getValue(Boolean::class.java) ?: true
+                            // Read as Any first to see exact stored type, then cast
+                            val rawAllowed = child.child("allowed").value
+                            val allowed = when (rawAllowed) {
+                                is Boolean -> rawAllowed
+                                is Long    -> rawAllowed != 0L   // Firebase sometimes stores bool as int
+                                is String  -> rawAllowed != "false"
+                                null       -> true               // missing = default allowed
+                                else       -> true
+                            }
+                            if (!allowed) Log.d(TAG, "effectiveApps: $pkg allowed=$allowed raw=$rawAllowed")
                             if (allowed) enabledPkgs.add(pkg)
                         }
                         Log.d(TAG, "effectiveApps: ${allPkgs.size} total, ${enabledPkgs.size} allowed")
@@ -112,10 +152,14 @@ class SkiePolicyEngine(private val context: Context) {
             val resolvedAllowed: Set<String>? = allowedPackages ?: effectivePackages
 
             if (resolvedAllowed != null) {
-                val allowed = resolvedAllowed + context.packageName + listOfNotNull(activeFocusApp)
+                // Always include globalPolicy packages + SkiePhone itself + active focus app
+                // globalPolicyPackages ensures Calculator, Camera, Contacts etc. are never
+                // accidentally suspended when parent approves their first app
+                val allowed = resolvedAllowed + globalPolicyPackages +
+                    context.packageName + listOfNotNull(activeFocusApp)
                 val toSuspend   = installed.filter { it !in allowed }.toTypedArray()
                 val toUnsuspend = installed.filter { it in allowed  }.toTypedArray()
-                Log.d(TAG, "applyAppSuspension: suspending ${toSuspend.size}, unsuspending ${toUnsuspend.size} schoolMode=$_schoolModeEnabled")
+                Log.d(TAG, "applyAppSuspension: suspending ${toSuspend.size}, unsuspending ${toUnsuspend.size} schoolMode=$_schoolModeEnabled globalPolicy=${globalPolicyPackages.size}")
                 try {
                     if (toSuspend.isNotEmpty())   dpm.setPackagesSuspended(admin, toSuspend, true)
                     if (toUnsuspend.isNotEmpty()) dpm.setPackagesSuspended(admin, toUnsuspend, false)

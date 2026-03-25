@@ -72,6 +72,9 @@ class SkiePolicyService : Service() {
         installedAppsManager.startListening()
         installedAppsManager.sync()
 
+        // Sync distraction timers: RTDB → SharedPrefs → apply WorkManager tasks
+        com.skiephone.app.distraction.DistractionManager.syncAndApply(this)
+
         locationManager = SkieLocationManager(this, deviceId)
         locationManager.startListening()
 

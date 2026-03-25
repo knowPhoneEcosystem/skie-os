@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -51,7 +52,8 @@ import android.util.Log as ALog
 data class EffectiveApp(
     val packageName: String = "",
     val appName: String = "",
-    val category: String = ""
+    val category: String = "",
+    val distractionExpiresAt: Long = 0L  // 0 = not a timed distraction app
 )
 
 class LauncherActivity : SkieBaseActivity() {
@@ -79,6 +81,25 @@ class LauncherActivity : SkieBaseActivity() {
     // Compose state holders — updated from BroadcastReceiver, trigger recomposition
     private var focusModeState = mutableStateOf("none")
     private var focusAppState  = mutableStateOf<String?>(null)
+
+    // Triggers launcher grid rebuild when a package installs or uninstalls
+    // Compose observes this — incrementing forces recomposition
+    private var packageChangeTrigger = mutableStateOf(0)
+
+    // Package install/remove receiver — primary trigger for grid rebuild after install
+    // Complements the lastInstallTs RTDB fallback listener
+    private val packageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val packageName = intent.data?.schemeSpecificPart ?: return
+            val replacing   = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
+            if (replacing) return // update — grid doesn't change
+            android.util.Log.d(TAG, "packageReceiver: ${intent.action} pkg=$packageName — rebuild grid in 2s")
+            // 2 second delay — PackageManager needs time to register the new package
+            mainHandler.postDelayed({
+                packageChangeTrigger.value = packageChangeTrigger.value + 1
+            }, 2000)
+        }
+    }
 
     private val focusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -136,12 +157,20 @@ class LauncherActivity : SkieBaseActivity() {
         // (focus app is on top when "end focus" is triggered from dashboard)
         val filter = IntentFilter(SkieFocusConstants.ACTION_FOCUS_CHANGED)
         registerReceiver(focusReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        // Register package install/remove receiver for launcher grid rebuild
+        val pkgFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addDataScheme("package")
+        }
+        registerReceiver(packageReceiver, pkgFilter)
         setContent {
             SkiePhoneTheme {
                 LauncherScreen(
-                    deviceId       = deviceId,
-                    focusModeState = focusModeState,
-                    focusAppState  = focusAppState
+                    deviceId              = deviceId,
+                    focusModeState        = focusModeState,
+                    focusAppState         = focusAppState,
+                    packageChangeTrigger  = packageChangeTrigger
                 )
             }
         }
@@ -195,6 +224,7 @@ class LauncherActivity : SkieBaseActivity() {
         super.onDestroy()
         mainHandler.removeCallbacksAndMessages(null)
         try { unregisterReceiver(focusReceiver) } catch (e: Exception) { /* not registered */ }
+        try { unregisterReceiver(packageReceiver) } catch (e: Exception) { /* not registered */ }
     }
 
     @Suppress("MissingSuperCall")
@@ -302,7 +332,8 @@ class LauncherActivity : SkieBaseActivity() {
 fun LauncherScreen(
     deviceId: String,
     focusModeState: MutableState<String>,
-    focusAppState: MutableState<String?>
+    focusAppState: MutableState<String?>,
+    packageChangeTrigger: MutableState<Int>
 ) {
     val context = LocalContext.current
     var allEffectiveApps by remember { mutableStateOf<List<EffectiveApp>>(emptyList()) }
@@ -311,71 +342,154 @@ fun LauncherScreen(
 
     val focusMode = focusModeState.value
     val focusApp  = focusAppState.value
+    // packageChangeTrigger read here so recomposition fires when it increments
+    val pkgTrigger = packageChangeTrigger.value
 
     // In focus mode: show only the pinned app so grid can't be used to escape
-    val visibleApps = remember(allEffectiveApps, focusMode, focusApp) {
-        when {
+    // pkgTrigger included in key — forces recompute when package installs/removes
+    val visibleApps = remember(allEffectiveApps, focusMode, focusApp, pkgTrigger) {
+        val pm = context.packageManager
+        val base = when {
             focusMode != "none" && !focusApp.isNullOrEmpty() ->
                 allEffectiveApps.filter { it.packageName == focusApp }
             else -> allEffectiveApps
         }
+        // Re-verify against PackageManager on every trigger — catches installs that happened
+        // while effectiveApps RTDB node was unchanged (Day 3 scenario)
+        base.filter { app ->
+            try {
+                pm.getPackageInfo(
+                    app.packageName,
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
+                        android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
+                    else
+                        @Suppress("DEPRECATION") android.content.pm.PackageManager.GET_UNINSTALLED_PACKAGES
+                )
+                true
+            } catch (e: Exception) { false }
+        }
     }
 
     // Listen to effectiveApps from RTDB.
-    // If empty → fall back to globalPolicy from Firestore (filtered to installed apps).
+    // Always merges globalPolicy apps (from RTDB cache) with effectiveApps entries.
+    // GlobalPolicy apps always visible on launcher regardless of effectiveApps state.
+    // If effectiveApps is empty → show globalPolicy only (provisioning state).
     DisposableEffect(deviceId) {
         val rtdbRef = FirebaseDatabase.getInstance().getReference("devices/$deviceId/effectiveApps")
+        val globalPolicyCacheRef = FirebaseDatabase.getInstance().getReference("devices/$deviceId/globalPolicyCache")
         val pm = context.packageManager
 
-        fun appsFromSnapshot(snapshot: DataSnapshot): List<EffectiveApp> {
+        // In-memory globalPolicy packages — loaded once and kept fresh
+        var globalPolicyApps: List<EffectiveApp> = emptyList()
+
+        fun isInstalled(pkg: String): Boolean = try {
+            pm.getPackageInfo(
+                pkg,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
+                    android.content.pm.PackageManager.MATCH_UNINSTALLED_PACKAGES
+                else
+                    @Suppress("DEPRECATION") android.content.pm.PackageManager.GET_UNINSTALLED_PACKAGES
+            )
+            true
+        } catch (e: Exception) { false }
+
+        fun rebuildGrid(effectiveSnapshot: DataSnapshot?) {
+            val seen = mutableSetOf(context.packageName)
             val apps = mutableListOf<EffectiveApp>()
-            snapshot.children.forEach { child ->
+
+            // Pass 1 — effectiveApps entries (parent/school approved, allowed=true only)
+            effectiveSnapshot?.children?.forEach { child ->
                 val pkg  = child.child("packageName").getValue(String::class.java) ?: return@forEach
                 val name = child.child("appName").getValue(String::class.java) ?: return@forEach
                 val cat  = child.child("category").getValue(String::class.java) ?: ""
                 if (pkg == context.packageName) return@forEach
-                // Respect allowed field — false means parent toggled off (suspended)
-                val allowed = child.child("allowed").getValue(Boolean::class.java) ?: true
+                val rawAllowed = child.child("allowed").value
+                val allowed = when (rawAllowed) {
+                    is Boolean -> rawAllowed
+                    is Long    -> rawAllowed != 0L
+                    is String  -> rawAllowed != "false"
+                    null       -> true
+                    else       -> true
+                }
                 if (!allowed) return@forEach
-                // Only show if actually installed on device
-                try { pm.getPackageInfo(pkg, 0); apps.add(EffectiveApp(pkg, name, cat)) }
-                catch (e: Exception) { /* not installed, skip */ }
+                val distractionExpiresAt = child.child("distractionExpiresAt").getValue(Long::class.java) ?: 0L
+                if (!isInstalled(pkg)) return@forEach
+                seen.add(pkg)
+                apps.add(EffectiveApp(pkg, name, cat, distractionExpiresAt))
             }
-            return apps
+
+            // Pass 2 — globalPolicy apps not already shown via effectiveApps
+            // These are always visible regardless of effectiveApps state
+            globalPolicyApps.forEach { app ->
+                if (app.packageName in seen) return@forEach
+                if (!isInstalled(app.packageName)) return@forEach
+                seen.add(app.packageName)
+                apps.add(app)
+            }
+
+            android.util.Log.d("LauncherActivity", "rebuildGrid: ${apps.size} apps (${seen.size - 1} seen)")
+            allEffectiveApps = apps
         }
 
-        fun loadGlobalPolicyFallback() {
-            com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                .document("skieConfig/globalPolicy")
-                .get()
-                .addOnSuccessListener { snap ->
-                    val approvedApps = snap.get("approvedApps") as? List<Map<String, Any>> ?: emptyList()
-                    val apps = approvedApps.mapNotNull { entry ->
-                        val pkg  = entry["packageName"] as? String ?: return@mapNotNull null
-                        val name = entry["appName"] as? String ?: return@mapNotNull null
-                        val cat  = entry["category"] as? String ?: "other"
-                        if (pkg == context.packageName) return@mapNotNull null
-                        try { pm.getPackageInfo(pkg, 0); EffectiveApp(pkg, name, cat) }
-                        catch (e: Exception) { null }
+        // Load globalPolicy from RTDB cache — fast, works offline, no Firestore auth needed
+        // Falls back to Firestore if cache is empty
+        fun loadGlobalPolicyCache(onLoaded: () -> Unit) {
+            globalPolicyCacheRef.get()
+                .addOnSuccessListener { cacheSnap ->
+                    if (cacheSnap.exists()) {
+                        val pkgs = cacheSnap.children.mapNotNull { it.getValue(String::class.java) }.toSet()
+                        // Cache only has packageNames — get display names from PackageManager
+                        globalPolicyApps = pkgs.mapNotNull { pkg ->
+                            if (pkg == context.packageName) return@mapNotNull null
+                            try {
+                                val appInfo = pm.getApplicationInfo(pkg, 0)
+                                val name = pm.getApplicationLabel(appInfo).toString()
+                                EffectiveApp(pkg, name, "essential")
+                            } catch (e: Exception) { null }
+                        }
+                        android.util.Log.d("LauncherActivity", "globalPolicyCache loaded: ${globalPolicyApps.size} apps")
+                        onLoaded()
+                    } else {
+                        // Cache empty — try Firestore directly
+                        com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                            .document("skieConfig/globalPolicy")
+                            .get()
+                            .addOnSuccessListener { snap ->
+                                val approvedApps = snap.get("approvedApps") as? List<Map<String, Any>> ?: emptyList()
+                                globalPolicyApps = approvedApps.mapNotNull { entry ->
+                                    val pkg  = entry["packageName"] as? String ?: return@mapNotNull null
+                                    val name = entry["appName"] as? String ?: return@mapNotNull null
+                                    val cat  = entry["category"] as? String ?: "essential"
+                                    if (pkg == context.packageName) return@mapNotNull null
+                                    EffectiveApp(pkg, name, cat)
+                                }
+                                android.util.Log.d("LauncherActivity", "globalPolicy Firestore loaded: ${globalPolicyApps.size} apps")
+                                onLoaded()
+                            }
+                            .addOnFailureListener {
+                                android.util.Log.e("LauncherActivity", "globalPolicy load failed: ${it.message}")
+                                onLoaded() // proceed with empty globalPolicy rather than hanging
+                            }
                     }
-                    android.util.Log.d("LauncherActivity", "globalPolicy fallback: ${apps.size} apps")
-                    allEffectiveApps = apps
                 }
                 .addOnFailureListener {
-                    android.util.Log.e("LauncherActivity", "globalPolicy load failed: ${it.message}")
+                    android.util.Log.e("LauncherActivity", "globalPolicyCache read failed: ${it.message}")
+                    onLoaded()
                 }
         }
+
+        // Latest effectiveApps snapshot — held so globalPolicy reload can re-merge
+        var latestEffectiveSnapshot: DataSnapshot? = null
 
         val listener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                if (!snapshot.exists() || snapshot.childrenCount == 0L) {
-                    android.util.Log.d("LauncherActivity", "effectiveApps empty — loading globalPolicy fallback")
-                    loadGlobalPolicyFallback()
-                    return
+                latestEffectiveSnapshot = snapshot
+                if (globalPolicyApps.isEmpty()) {
+                    // First load — need globalPolicy before we can build the grid
+                    loadGlobalPolicyCache { rebuildGrid(snapshot) }
+                } else {
+                    rebuildGrid(snapshot)
                 }
-                val apps = appsFromSnapshot(snapshot)
-                android.util.Log.d("LauncherActivity", "effectiveApps: ${apps.size} apps")
-                allEffectiveApps = apps
             }
             override fun onCancelled(error: DatabaseError) {
                 android.util.Log.e("LauncherActivity", "effectiveApps cancelled: ${error.message}")
@@ -385,36 +499,22 @@ fun LauncherScreen(
         onDispose { rtdbRef.removeEventListener(listener) }
     }
 
-    // Listen to lastInstallTs — fires when a new app installs.
-    // Rebuilds grid after 800ms delay to let PackageManager settle.
+    // Listen to lastInstallTs — fallback trigger when a new app installs.
+    // Primary trigger is ACTION_PACKAGE_ADDED broadcast (2s delay).
+    // This fires after 800ms as secondary safety net.
+    // Just increments packageChangeTrigger — visibleApps remember key handles the recompute.
+    // Does NOT rebuild allEffectiveApps directly — that is owned by the effectiveApps listener above.
     DisposableEffect(deviceId) {
         val installTsRef = FirebaseDatabase.getInstance()
             .getReference("devices/$deviceId/lastInstallTs")
         val installListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 if (!snapshot.exists()) return
-                // Delay rebuild so PackageManager has time to register the new package
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    val effectiveRef = FirebaseDatabase.getInstance()
-                        .getReference("devices/$deviceId/effectiveApps")
-                    effectiveRef.get().addOnSuccessListener { snap ->
-                        if (snap.exists()) {
-                            val pm = context.packageManager
-                            val apps = mutableListOf<EffectiveApp>()
-                            snap.children.forEach { child ->
-                                val pkg  = child.child("packageName").getValue(String::class.java) ?: return@forEach
-                                val name = child.child("appName").getValue(String::class.java) ?: return@forEach
-                                val cat  = child.child("category").getValue(String::class.java) ?: ""
-                                val allowed = child.child("allowed").getValue(Boolean::class.java) ?: true
-                                if (pkg == context.packageName) return@forEach
-                                if (!allowed) return@forEach
-                                try { pm.getPackageInfo(pkg, 0); apps.add(EffectiveApp(pkg, name, cat)) }
-                                catch (e: Exception) { /* not installed yet */ }
-                            }
-                            allEffectiveApps = apps
-                            android.util.Log.d("LauncherActivity", "lastInstallTs rebuild: ${apps.size} apps")
-                        }
-                    }
+                    // Trigger visibleApps recompute via packageChangeTrigger
+                    // allEffectiveApps is already correct from the effectiveApps listener
+                    packageChangeTrigger.value = packageChangeTrigger.value + 1
+                    android.util.Log.d("LauncherActivity", "lastInstallTs: triggered grid recompute")
                 }, 800)
             }
             override fun onCancelled(error: DatabaseError) {}
@@ -512,6 +612,32 @@ fun EffectiveAppIcon(app: EffectiveApp) {
         }
     }
 
+    // Countdown state — ticks every 30s, shows "Xm left" chip for distraction apps
+    var remainingMs by remember(app.packageName, app.distractionExpiresAt) {
+        mutableStateOf(
+            if (app.distractionExpiresAt > 0L)
+                (app.distractionExpiresAt - System.currentTimeMillis()).coerceAtLeast(0L)
+            else 0L
+        )
+    }
+    LaunchedEffect(app.packageName, app.distractionExpiresAt) {
+        if (app.distractionExpiresAt <= 0L) return@LaunchedEffect
+        while (true) {
+            val remaining = (app.distractionExpiresAt - System.currentTimeMillis()).coerceAtLeast(0L)
+            remainingMs = remaining
+            if (remaining <= 0L) break
+            kotlinx.coroutines.delay(30_000L) // tick every 30 seconds
+        }
+    }
+
+    val countdownLabel: String? = remember(remainingMs) {
+        if (remainingMs <= 0L) null
+        else {
+            val mins = (remainingMs / 60_000L).toInt()
+            if (mins <= 0) "<1m" else "${mins}m"
+        }
+    }
+
     Column(
         modifier = Modifier.clickable {
             context.packageManager.getLaunchIntentForPackage(app.packageName)
@@ -529,6 +655,28 @@ fun EffectiveAppIcon(app: EffectiveApp) {
                 contentDescription = app.appName,
                 modifier = Modifier.fillMaxSize()
             )
+            // Countdown chip — bottom-right of icon
+            if (countdownLabel != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(3.dp)
+                        .background(
+                            color = Color(0xCC1A1A2E),
+                            shape = RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = countdownLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        fontSize = androidx.compose.ui.unit.TextUnit(
+                            9f, androidx.compose.ui.unit.TextUnitType.Sp
+                        )
+                    )
+                }
+            }
         }
         Spacer(modifier = Modifier.height(6.dp))
         Text(

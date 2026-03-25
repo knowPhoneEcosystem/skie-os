@@ -69,11 +69,16 @@ class SkieCommandManager(private val context: Context) {
                     "INSTALL_APP"           -> installApp(snapshot)
                     "UNINSTALL_APP"         -> uninstallApp(snapshot)
                     "APPLY_HARDENING_STEP"  -> applyHardeningStep(snapshot)
+                    "APPLY_ALL_HARDENING_STEPS" -> applyAllHardeningSteps()
+                    "RESTART_SERVICE"           -> restartService()
+                    "DISTRACTION_TIMER"         -> handleDistractionTimer(snapshot)
+                    "CANCEL_DISTRACTION_TIMER"  -> handleCancelDistractionTimer(snapshot)
                     "REMOVE_HARDENING_STEP" -> removeHardeningStep(snapshot)
                     "CHECK_COMPLIANCE"      -> checkCompliance()
                     "POWER_OFF_DISABLE"     -> setPowerOffDisabled(snapshot)
                     "SUSPEND_APP"           -> suspendApp(snapshot, true)
                     "UNSUSPEND_APP"         -> suspendApp(snapshot, false)
+                    "SYNC_POLICY"           -> syncPolicy()
                     else -> Log.w(TAG, "Unknown command: $action")
                 }
             }
@@ -207,23 +212,50 @@ class SkieCommandManager(private val context: Context) {
 
         Log.d(TAG, "installApp: $packageName")
 
-        // Case 1 — already installed, just unsuspend
+        // Case 1 — already installed
+        // Check effectiveApps allowed field before unsuspending.
+        // If parent toggled it OFF (allowed=false), do NOT unsuspend — keep it suspended.
         val isInstalled = try {
             context.packageManager.getPackageInfo(packageName, 0)
             true
         } catch (e: Exception) { false }
 
         if (isInstalled) {
-            try {
-                if (dpm.isDeviceOwnerApp(context.packageName)) {
-                    dpm.setPackagesSuspended(componentName, arrayOf(packageName), false)
+            val effectiveRef = database.getReference("devices/$deviceId/effectiveApps")
+            effectiveRef.get().addOnSuccessListener { snap ->
+                var allowedByPolicy = true // default: allow if not found in effectiveApps
+                snap.children.forEach { child ->
+                    val pkg = child.child("packageName").getValue(String::class.java)
+                    if (pkg == packageName) {
+                        allowedByPolicy = child.child("allowed").getValue(Boolean::class.java) ?: true
+                    }
                 }
-                writeInstallResult(packageName, true, "unsuspended")
-                Log.d(TAG, "installApp: $packageName already installed — unsuspended")
-            } catch (e: Exception) {
-                writeInstallResult(packageName, false, e.message)
+                try {
+                    if (dpm.isDeviceOwnerApp(context.packageName)) {
+                        if (allowedByPolicy) {
+                            dpm.setPackagesSuspended(componentName, arrayOf(packageName), false)
+                            Log.d(TAG, "installApp: $packageName already installed — unsuspended (allowed=true)")
+                        } else {
+                            Log.d(TAG, "installApp: $packageName already installed but allowed=false — keeping suspended")
+                        }
+                    }
+                    writeInstallResult(packageName, true, if (allowedByPolicy) "unsuspended" else "kept_suspended")
+                    // Sync immediately so installedApps reflects current suspended state
+                    try { com.skiephone.app.services.SkieInstalledAppsManager(context).sync() }
+                    catch (e: Exception) { Log.e(TAG, "installApp sync after unsuspend: ${e.message}") }
+                } catch (e: Exception) {
+                    writeInstallResult(packageName, false, e.message)
+                }
+                database.getReference("devices/$deviceId/command").removeValue()
+            }.addOnFailureListener {
+                // Firestore unavailable — default to unsuspend to not block legitimate installs
+                try {
+                    if (dpm.isDeviceOwnerApp(context.packageName)) {
+                        dpm.setPackagesSuspended(componentName, arrayOf(packageName), false)
+                    }
+                } catch (e: Exception) { Log.e(TAG, "installApp fallback unsuspend: ${e.message}") }
+                database.getReference("devices/$deviceId/command").removeValue()
             }
-            database.getReference("devices/$deviceId/command").removeValue()
             return
         }
 
@@ -258,7 +290,7 @@ class SkieCommandManager(private val context: Context) {
 
         // Case 3 — brand new app, open Play Store as last resort
         Log.d(TAG, "installApp: $packageName is new — opening Play Store")
-        val tunnelEndMs = System.currentTimeMillis() + 300_000L
+        val tunnelEndMs = System.currentTimeMillis() + 90_000L
         try {
             val engine = SkiePolicyEngine(context)
             dpm.setPackagesSuspended(componentName, arrayOf(SkiePolicyEngine.PLAY_STORE_PKG), false)
@@ -267,7 +299,7 @@ class SkieCommandManager(private val context: Context) {
             installIntent.setPackage(SkiePolicyEngine.PLAY_STORE_PKG)
             installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(installIntent)
-            engine.unsuspendPlayStoreTemporarily(300_000L)
+            engine.unsuspendPlayStoreTemporarily(90_000L)
             database.getReference("devices/$deviceId/playStoreTunnel").setValue(true)
             database.getReference("devices/$deviceId/playStoreTunnelEndsAt").setValue(tunnelEndMs)
             writeInstallResult(packageName, true, "play_store_opened")
@@ -366,6 +398,73 @@ class SkieCommandManager(private val context: Context) {
     }
 
 
+    /**
+     * APPLY_ALL_HARDENING_STEPS — apply every hardening step in one command.
+     * Fixes the race condition where rapid sequential APPLY_HARDENING_STEP
+     * commands overwrite each other in the single RTDB command node.
+     * Dashboard sends one command, device handles all steps internally.
+     */
+    private fun applyAllHardeningSteps() {
+        val engine = SkiePolicyEngine(context)
+        val allSteps = listOf(
+            "disallow_factory_reset",
+            "disallow_safe_boot",
+            "disallow_usb_file_transfer",
+            "disallow_modify_accounts",
+            "disallow_install_unknown_sources",
+            "disallow_debugging_features",
+            "disallow_airplane_mode",
+            "disallow_add_user",
+            "disallow_user_switch",
+            "disallow_config_mobile_networks",
+            "screen_capture_disabled",
+            "suspend_play_store",
+            "block_uninstall_skie"
+        )
+        val hardenLogRef = database.getReference("devices/$deviceId/hardenLog")
+        allSteps.forEach { stepId ->
+            try {
+                engine.applyHardeningStep(stepId)
+                hardenLogRef.child(stepId).setValue(
+                    mapOf("success" to true, "ts" to System.currentTimeMillis())
+                )
+                Log.d(TAG, "applyAllHardeningSteps: $stepId ✓")
+            } catch (e: Exception) {
+                Log.e(TAG, "applyAllHardeningSteps: $stepId failed — ${e.message}")
+            }
+        }
+        // DNS is async — handle separately
+        engine.applyDnsFiltering(true) {
+            hardenLogRef.child("dns_filtering").setValue(
+                mapOf("success" to true, "ts" to System.currentTimeMillis())
+            )
+            Log.d(TAG, "applyAllHardeningSteps: dns_filtering ✓")
+        }
+        database.getReference("devices/$deviceId/command").removeValue()
+        Log.d(TAG, "applyAllHardeningSteps: done")
+    }
+
+    /**
+     * RESTART_SERVICE — stops SkiePolicyService cleanly.
+     * START_STICKY + onTaskRemoved alarm brings it back in ~1s.
+     * Restarts: SkiePolicyEngine, SkieCommandManager, SkieBatteryManager,
+     *           SkieInstalledAppsManager, SkieLocationManager, SkieSOSManager,
+     *           SkieTravelManager, SkieUpdateManager — everything owned by the service.
+     */
+    private fun restartService() {
+        Log.d(TAG, "restartService: stopping SkiePolicyService for restart")
+        database.getReference("devices/$deviceId/command").removeValue()
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            try {
+                val intent = android.content.Intent(context, com.skiephone.app.services.SkiePolicyService::class.java)
+                context.stopService(intent)
+                Log.d(TAG, "restartService: stopService called — START_STICKY will restart")
+            } catch (e: Exception) {
+                Log.e(TAG, "restartService: ${e.message}")
+            }
+        }, 300)
+    }
+
     private fun removeHardeningStep(snapshot: DataSnapshot) {
         val stepId = snapshot.child("stepId").getValue(String::class.java) ?: run {
             Log.w(TAG, "removeHardeningStep: no stepId in command")
@@ -458,12 +557,35 @@ class SkieCommandManager(private val context: Context) {
         }
         try {
             if (dpm.isDeviceOwnerApp(context.packageName)) {
-                dpm.setPackagesSuspended(componentName, arrayOf(packageName), suspend)
-                Log.d(TAG, "suspendApp: $packageName suspend=$suspend")
-                updateEffectiveAppStatus(packageName, if (suspend) "suspended" else "installed")
+                val failed = dpm.setPackagesSuspended(componentName, arrayOf(packageName), suspend)
+                if (failed.isEmpty()) {
+                    Log.d(TAG, "suspendApp: $packageName suspend=$suspend ✓")
+                } else {
+                    Log.e(TAG, "suspendApp: $packageName failed — package not found or not suspendable")
+                }
+                // Sync immediately so installedApps suspended field reflects new state
+                try { com.skiephone.app.services.SkieInstalledAppsManager(context).sync() }
+                catch (e: Exception) { Log.e(TAG, "suspendApp sync: ${e.message}") }
+            } else {
+                Log.e(TAG, "suspendApp: not device owner — cannot suspend $packageName")
             }
         } catch (e: Exception) {
             Log.e(TAG, "suspendApp: ${e.message}")
+        }
+        database.getReference("devices/$deviceId/command").removeValue()
+    }
+
+    /**
+     * SYNC_POLICY — forces immediate sync of installedApps from PackageManager.
+     * Triggered by Refresh button on parent dashboard and owner bloatware panel.
+     * Device rewrites installedApps with fresh state including suspended field.
+     */
+    private fun syncPolicy() {
+        Log.d(TAG, "syncPolicy: triggering SkieInstalledAppsManager.sync()")
+        try {
+            com.skiephone.app.services.SkieInstalledAppsManager(context).sync()
+        } catch (e: Exception) {
+            Log.e(TAG, "syncPolicy: ${e.message}")
         }
         database.getReference("devices/$deviceId/command").removeValue()
     }
@@ -477,27 +599,6 @@ class SkieCommandManager(private val context: Context) {
         if (error != null) entry["error"] = error
         val safeKey = packageName.replace(".", "_")
         database.getReference("devices/$deviceId/installResults/$safeKey").setValue(entry)
-
-        // Update effectiveApps status on successful install
-        if (success) {
-            updateEffectiveAppStatus(packageName, "installed")
-        }
-    }
-
-    private fun updateEffectiveAppStatus(packageName: String, status: String) {
-        try {
-        val ref = database.getReference("devices/$deviceId/effectiveApps")
-        ref.get()
-            .addOnSuccessListener { snap ->
-                try {
-                snap.children.find {
-                    it.child("packageName").getValue(String::class.java) == packageName
-                }?.ref?.child("status")?.setValue(status)
-                Log.d(TAG, "updateEffectiveAppStatus: $packageName → $status")
-                } catch (e: Exception) { Log.e(TAG, "updateEffectiveAppStatus inner: ${e.message}") }
-            }
-            .addOnFailureListener { Log.e(TAG, "updateEffectiveAppStatus get failed: ${it.message}") }
-        } catch (e: Exception) { Log.e(TAG, "updateEffectiveAppStatus: ${e.message}") }
     }
 
     private fun writeUninstallResult(packageName: String, success: Boolean, error: String?) {
@@ -509,12 +610,40 @@ class SkieCommandManager(private val context: Context) {
         if (error != null) entry["error"] = error
         val safeKey = packageName.replace(".", "_")
         database.getReference("devices/$deviceId/uninstallResults/$safeKey").setValue(entry)
+    }
 
-        // On successful uninstall — set status to pending_install (keep in effectiveApps)
-        // On system app suspend — set status to suspended
-        if (success) {
-            val newStatus = if (error == "system_app_disabled") "suspended" else "pending_install"
-            updateEffectiveAppStatus(packageName, newStatus)
+    /**
+     * DISTRACTION_TIMER — enable a distraction app for a fixed duration.
+     * Payload: { packageName: String, durationMs: Long }
+     * Saves timer to SharedPrefs + RTDB, schedules WorkManager task, unsuspends app.
+     */
+    private fun handleDistractionTimer(snapshot: com.google.firebase.database.DataSnapshot) {
+        val packageName = snapshot.child("packageName").getValue(String::class.java) ?: run {
+            Log.w(TAG, "handleDistractionTimer: no packageName")
+            database.getReference("devices/$deviceId/command").removeValue()
+            return
         }
+        val durationMs = snapshot.child("durationMs").getValue(Long::class.java)
+            ?: com.skiephone.app.distraction.DistractionManager.getDefaultDurationMs(context)
+
+        Log.d(TAG, "handleDistractionTimer: $packageName for ${durationMs / 1000}s")
+        com.skiephone.app.distraction.DistractionManager.enableTimer(context, packageName, durationMs)
+        database.getReference("devices/$deviceId/command").removeValue()
+    }
+
+    /**
+     * CANCEL_DISTRACTION_TIMER — cancel an active distraction timer early.
+     * Payload: { packageName: String }
+     * Cancels WorkManager task, suspends app, clears timer from SharedPrefs + RTDB.
+     */
+    private fun handleCancelDistractionTimer(snapshot: com.google.firebase.database.DataSnapshot) {
+        val packageName = snapshot.child("packageName").getValue(String::class.java) ?: run {
+            Log.w(TAG, "handleCancelDistractionTimer: no packageName")
+            database.getReference("devices/$deviceId/command").removeValue()
+            return
+        }
+        Log.d(TAG, "handleCancelDistractionTimer: $packageName")
+        com.skiephone.app.distraction.DistractionManager.cancelTimer(context, packageName)
+        database.getReference("devices/$deviceId/command").removeValue()
     }
 }

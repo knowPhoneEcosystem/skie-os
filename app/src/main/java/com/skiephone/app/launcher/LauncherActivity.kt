@@ -48,6 +48,14 @@ import com.skiephone.app.admin.SkieDeviceAdminReceiver
 import com.skiephone.app.services.SkieSOSManager
 import com.skiephone.app.services.SkieTravelManager
 import android.util.Log as ALog
+import androidx.compose.animation.core.*
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.rememberCoroutineScope
 
 data class EffectiveApp(
     val packageName: String = "",
@@ -523,11 +531,74 @@ fun LauncherScreen(
         onDispose { installTsRef.removeEventListener(installListener) }
     }
 
+    // ── Wallpaper — listen to skieConfig/wallpaper, download on change ─────────
+    // textScheme: "auto" = luminance detection, "light" = force light text, "dark" = force dark text
+    var wallpaperBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    // true = use white text, false = use dark text (default when no wallpaper)
+    var wallpaperUseLightText by remember { mutableStateOf(false) }
+    val wallpaperScope = rememberCoroutineScope()
+    DisposableEffect(Unit) {
+        val ref = FirebaseDatabase.getInstance().getReference("skieConfig/wallpaper")
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snap: DataSnapshot) {
+                if (!snap.exists()) {
+                    // Wallpaper cleared — reset to gradient + dark text
+                    wallpaperBitmap = null
+                    wallpaperUseLightText = false
+                    return
+                }
+                val url = snap.child("url").getValue(String::class.java) ?: return
+                val textScheme = snap.child("textScheme").getValue(String::class.java) ?: "auto"
+                wallpaperScope.launch {
+                    val bmp = withContext(Dispatchers.IO) {
+                        try {
+                            val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                            conn.connectTimeout = 8000
+                            conn.readTimeout = 8000
+                            conn.connect()
+                            android.graphics.BitmapFactory.decodeStream(conn.inputStream)
+                        } catch (e: Exception) {
+                            android.util.Log.e("LauncherActivity", "wallpaper download failed: ${e.message}")
+                            null
+                        }
+                    }
+                    if (bmp != null) {
+                        wallpaperBitmap = bmp
+                        wallpaperUseLightText = when (textScheme) {
+                            "light" -> true   // owner forced light text
+                            "dark"  -> false  // owner forced dark text
+                            else    -> withContext(Dispatchers.Default) { computeWallpaperIsDark(bmp) }
+                        }
+                        android.util.Log.d("LauncherActivity",
+                            "wallpaper loaded, textScheme=$textScheme useLightText=$wallpaperUseLightText")
+                    }
+                }
+            }
+            override fun onCancelled(e: DatabaseError) {}
+        }
+        ref.addValueEventListener(listener)
+        onDispose { ref.removeEventListener(listener) }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(colors = listOf(Color(0xFFE8F4FD), Color(0xFFF5F0FF))))
+            .then(
+                if (wallpaperBitmap == null)
+                    Modifier.background(Brush.verticalGradient(colors = listOf(Color(0xFFE8F4FD), Color(0xFFF5F0FF))))
+                else
+                    Modifier
+            )
     ) {
+        // Wallpaper image — rendered behind all content when set
+        wallpaperBitmap?.let { bmp ->
+            androidx.compose.foundation.Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -536,12 +607,16 @@ fun LauncherScreen(
             Text(
                 text = "skie",
                 style = MaterialTheme.typography.displaySmall,
-                color = Color(0xFF1A1A2E)
+                color = if (wallpaperUseLightText) Color.White else Color(0xFF1A1A2E)
             )
             Text(
                 text = if (focusMode != "none") "focus mode active" else "your safe space",
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (focusMode != "none") Color(0xFF6B4EFF) else Color(0xFF8A8AAA)
+                color = when {
+                    focusMode != "none"     -> Color(0xFF6B4EFF)
+                    wallpaperUseLightText   -> Color.White.copy(alpha = 0.75f)
+                    else                    -> Color(0xFF8A8AAA)
+                }
             )
             Spacer(modifier = Modifier.weight(1f))
             LazyVerticalGrid(
@@ -553,18 +628,22 @@ fun LauncherScreen(
             ) {
                 // Hide Skie Student icon during focus — not an escape route
                 if (focusMode == "none") {
-                    item { SkieStudentIcon() }
+                    item { SkieStudentIcon(useLightText = wallpaperUseLightText) }
                 }
                 items(visibleApps) { app ->
-                    EffectiveAppIcon(app = app)
+                    EffectiveAppIcon(app = app, useLightText = wallpaperUseLightText)
                 }
                 // Travel Mode icon — only outside focus mode
                 if (focusMode == "none") {
-                    item { TravelModeIcon(travelManager = travelManager) }
+                    item { TravelModeIcon(travelManager = travelManager, useLightText = wallpaperUseLightText) }
                 }
                 // SOS icon — only outside focus mode
                 if (focusMode == "none") {
-                    item { SOSIcon(onConfirmed = { sosManager.triggerSOS() }) }
+                    item { SOSIcon(
+                        onConfirmed = { endsAt -> sosManager.triggerSOS(endsAt) },
+                        onDisable   = { sosManager.clearSOS() },
+                        useLightText = wallpaperUseLightText
+                    ) }
                 }
             }
         }
@@ -572,7 +651,7 @@ fun LauncherScreen(
 }
 
 @Composable
-fun SkieStudentIcon() {
+fun SkieStudentIcon(useLightText: Boolean = false) {
     val context = LocalContext.current
     Column(
         modifier = Modifier.clickable {
@@ -593,7 +672,7 @@ fun SkieStudentIcon() {
         Text(
             text = "Skie Student",
             style = MaterialTheme.typography.labelMedium,
-            color = Color(0xFF1A1A2E),
+            color = if (useLightText) Color.White else Color(0xFF1A1A2E),
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -602,7 +681,7 @@ fun SkieStudentIcon() {
 }
 
 @Composable
-fun EffectiveAppIcon(app: EffectiveApp) {
+fun EffectiveAppIcon(app: EffectiveApp, useLightText: Boolean = false) {
     val context = LocalContext.current
     val bitmap = remember(app.packageName) {
         try {
@@ -682,119 +761,340 @@ fun EffectiveAppIcon(app: EffectiveApp) {
         Text(
             text = app.appName,
             style = MaterialTheme.typography.labelMedium,
-            color = Color(0xFF1A1A2E),
+            color = if (useLightText) Color.White else Color(0xFF1A1A2E),
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
     }
 }
+// ── Wallpaper text scheme — computes luminance from bitmap center region ────
+// Returns true if wallpaper is dark (→ use white text)
+fun computeWallpaperIsDark(bmp: android.graphics.Bitmap): Boolean {
+    val sampleW = minOf(bmp.width, 80)
+    val sampleH = minOf(bmp.height, 80)
+    val startX = (bmp.width - sampleW) / 2
+    val startY = (bmp.height - sampleH) / 2
+    var totalLuminance = 0.0
+    var count = 0
+    for (y in startY until startY + sampleH step 4) {
+        for (x in startX until startX + sampleW step 4) {
+            val px = bmp.getPixel(x, y)
+            val r = android.graphics.Color.red(px) / 255.0
+            val g = android.graphics.Color.green(px) / 255.0
+            val b = android.graphics.Color.blue(px) / 255.0
+            totalLuminance += 0.2126 * r + 0.7152 * g + 0.0722 * b
+            count++
+        }
+    }
+    return if (count == 0) false else (totalLuminance / count) < 0.5
+}
+
+// ── Duration options — shared by both Travel and SOS ─────────────────────
+private val DURATION_OPTIONS = listOf(
+    Pair("15m",  15 * 60 * 1000L),
+    Pair("30m",  30 * 60 * 1000L),
+    Pair("1hr",  60 * 60 * 1000L),
+    Pair("2hr",  2 * 60 * 60 * 1000L),
+    Pair("8hr",  8 * 60 * 60 * 1000L),
+)
+
+// ── Bounce animation — used when Travel/SOS is active ────────────────────
+@Composable
+fun rememberBounceScale(active: Boolean): Float {
+    val infiniteTransition = rememberInfiniteTransition(label = "bounce")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (active) 1.12f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bounceScale"
+    )
+    return if (active) scale else 1f
+}
+
 // ── SOS Icon ──────────────────────────────────────────────────────────────
 @Composable
-fun SOSIcon(onConfirmed: () -> Unit) {
-    var showDialog by remember { mutableStateOf(false) }
+fun SOSIcon(onConfirmed: (endsAt: Long) -> Unit, onDisable: () -> Unit, useLightText: Boolean = false) {
+    var showDurationPicker by remember { mutableStateOf(false) }
+    var showTurnOffDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val deviceId = remember {
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+    }
 
-    if (showDialog) {
+    // Listen to SOS active state
+    var sosActive by remember { mutableStateOf(false) }
+    var sosEndsAt by remember { mutableStateOf(0L) }
+    DisposableEffect(deviceId) {
+        val r = FirebaseDatabase.getInstance().getReference("devices/$deviceId/sos")
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snap: DataSnapshot) {
+                sosActive = snap.child("active").getValue(Boolean::class.java) ?: false
+                sosEndsAt = snap.child("endsAt").getValue(Long::class.java) ?: 0L
+            }
+            override fun onCancelled(e: DatabaseError) {}
+        }
+        r.addValueEventListener(listener)
+        onDispose { r.removeEventListener(listener) }
+    }
+
+    // Listen to canChildDisableSOS from policy
+    var canDisable by remember { mutableStateOf(true) }
+    DisposableEffect(deviceId) {
+        val r = FirebaseDatabase.getInstance().getReference("devices/$deviceId/policy/canChildDisableSOS")
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snap: DataSnapshot) {
+                canDisable = snap.getValue(Boolean::class.java) ?: true
+            }
+            override fun onCancelled(e: DatabaseError) {}
+        }
+        r.addValueEventListener(listener)
+        onDispose { r.removeEventListener(listener) }
+    }
+
+    val bounceScale = rememberBounceScale(sosActive)
+
+    // Duration picker dialog
+    if (showDurationPicker) {
         AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text("Send SOS?", fontWeight = FontWeight.SemiBold) },
-            text = { Text("This will immediately alert your parent, call them, and share your live location.") },
+            onDismissRequest = { showDurationPicker = false },
+            title = { Text("How long should SOS run?", fontWeight = FontWeight.SemiBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "This will alert your parent, call them, and share your live location.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        DURATION_OPTIONS.forEach { (label, ms) ->
+                            Button(
+                                onClick = {
+                                    showDurationPicker = false
+                                    onConfirmed(System.currentTimeMillis() + ms)
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFFF3B30),
+                                    contentColor = Color.White
+                                ),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                            ) {
+                                Text(label, fontSize = androidx.compose.ui.unit.TextUnit(11f, androidx.compose.ui.unit.TextUnitType.Sp))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showDurationPicker = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Turn off confirmation
+    if (showTurnOffDialog) {
+        AlertDialog(
+            onDismissRequest = { showTurnOffDialog = false },
+            title = { Text("Turn off SOS?", fontWeight = FontWeight.SemiBold) },
+            text = { Text("Your parent will be notified that SOS has ended.") },
             confirmButton = {
-                TextButton(onClick = { showDialog = false; onConfirmed() }) {
-                    Text("Yes, send SOS", color = Color(0xFFFF3B30), fontWeight = FontWeight.SemiBold)
+                TextButton(onClick = { showTurnOffDialog = false; onDisable() }) {
+                    Text("Turn Off", color = Color(0xFFFF3B30), fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showTurnOffDialog = false }) { Text("Cancel") }
             }
         )
     }
 
     Column(
-        modifier = Modifier.clickable { showDialog = true },
+        modifier = Modifier.clickable {
+            if (sosActive) {
+                if (canDisable) showTurnOffDialog = true
+                // if canDisable=false, do nothing — parent locked this
+            } else {
+                showDurationPicker = true
+            }
+        },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
                 .size(72.dp)
+                .graphicsLayer(scaleX = bounceScale, scaleY = bounceScale)
                 .clip(RoundedCornerShape(18.dp))
                 .background(Color(0xFFFF3B30)),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = "🆘", fontSize = androidx.compose.ui.unit.TextUnit(28f, androidx.compose.ui.unit.TextUnitType.Sp))
+            Text(
+                text = "🆘",
+                fontSize = androidx.compose.ui.unit.TextUnit(28f, androidx.compose.ui.unit.TextUnitType.Sp)
+            )
         }
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = "SOS",
+            text = if (sosActive) "SOS ON" else "SOS",
             style = MaterialTheme.typography.labelMedium,
             color = Color(0xFFFF3B30),
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
             maxLines = 1
         )
+        if (sosActive && sosEndsAt > 0L) {
+            val endTime = remember(sosEndsAt) {
+                val cal = java.util.Calendar.getInstance().apply { timeInMillis = sosEndsAt }
+                String.format("%02d:%02d", cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE))
+            }
+            Text(
+                text = "until $endTime",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFFFF3B30).copy(alpha = 0.7f),
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
+        }
     }
 }
 
 // ── Travel Mode Icon ──────────────────────────────────────────────────────
 @Composable
-fun TravelModeIcon(travelManager: SkieTravelManager) {
-    var showDialog by remember { mutableStateOf(false) }
+fun TravelModeIcon(travelManager: SkieTravelManager, useLightText: Boolean = false) {
+    var showDurationPicker by remember { mutableStateOf(false) }
+    var showTurnOffDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val deviceId = remember {
-        android.provider.Settings.Secure.getString(
-            context.contentResolver, android.provider.Settings.Secure.ANDROID_ID
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+    }
+
+    // Listen to full travelMode node
+    var travelActive by remember { mutableStateOf(false) }
+    var travelEndsAt by remember { mutableStateOf(0L) }
+    DisposableEffect(deviceId) {
+        val r = FirebaseDatabase.getInstance().getReference("devices/$deviceId/travelMode")
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snap: DataSnapshot) {
+                travelActive = snap.child("active").getValue(Boolean::class.java) ?: false
+                travelEndsAt = snap.child("endsAt").getValue(Long::class.java) ?: 0L
+            }
+            override fun onCancelled(e: DatabaseError) {}
+        }
+        r.addValueEventListener(listener)
+        onDispose { r.removeEventListener(listener) }
+    }
+
+    // Listen to canChildDisableTravel from policy
+    var canDisable by remember { mutableStateOf(true) }
+    DisposableEffect(deviceId) {
+        val r = FirebaseDatabase.getInstance().getReference("devices/$deviceId/policy/canChildDisableTravel")
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snap: DataSnapshot) {
+                canDisable = snap.getValue(Boolean::class.java) ?: true
+            }
+            override fun onCancelled(e: DatabaseError) {}
+        }
+        r.addValueEventListener(listener)
+        onDispose { r.removeEventListener(listener) }
+    }
+
+    val bounceScale = rememberBounceScale(travelActive)
+
+    // Duration picker dialog
+    if (showDurationPicker) {
+        AlertDialog(
+            onDismissRequest = { showDurationPicker = false },
+            title = { Text("How long will you be travelling?", fontWeight = FontWeight.SemiBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Your parent will be able to track your journey live for this duration.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        DURATION_OPTIONS.forEach { (label, ms) ->
+                            Button(
+                                onClick = {
+                                    showDurationPicker = false
+                                    val endsAt = System.currentTimeMillis() + ms
+                                    FirebaseDatabase.getInstance()
+                                        .getReference("devices/$deviceId/travelMode")
+                                        .updateChildren(mapOf(
+                                            "active" to true,
+                                            "triggeredBy" to "student",
+                                            "startedAt" to System.currentTimeMillis(),
+                                            "endsAt" to endsAt
+                                        ))
+                                    travelManager.startListening()
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF6366F1),
+                                    contentColor = Color.White
+                                ),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                            ) {
+                                Text(label, fontSize = androidx.compose.ui.unit.TextUnit(11f, androidx.compose.ui.unit.TextUnitType.Sp))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showDurationPicker = false }) { Text("Cancel") }
+            }
         )
     }
 
-    // Listen to current travel mode state
-    var travelActive by remember { mutableStateOf(false) }
-    DisposableEffect(deviceId) {
-        val ref = com.google.firebase.database.FirebaseDatabase.getInstance()
-            .getReference("devices/$deviceId/travelMode/active")
-        val listener = object : com.google.firebase.database.ValueEventListener {
-            override fun onDataChange(snap: com.google.firebase.database.DataSnapshot) {
-                travelActive = snap.getValue(Boolean::class.java) ?: false
-            }
-            override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
-        }
-        ref.addValueEventListener(listener)
-        onDispose { ref.removeEventListener(listener) }
-    }
-
-    if (showDialog) {
+    // Turn off confirmation
+    if (showTurnOffDialog) {
         AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text("Enable Travel Mode?", fontWeight = FontWeight.SemiBold) },
-            text = { Text("Your parent will be able to track your journey live until you arrive at your destination.") },
+            onDismissRequest = { showTurnOffDialog = false },
+            title = { Text("End Travel Mode?", fontWeight = FontWeight.SemiBold) },
+            text = { Text("Your parent will be notified that travel mode has ended.") },
             confirmButton = {
                 TextButton(onClick = {
-                    showDialog = false
-                    // Write travelMode active=true to RTDB — parent sets destination from dashboard
-                    com.google.firebase.database.FirebaseDatabase.getInstance()
+                    showTurnOffDialog = false
+                    FirebaseDatabase.getInstance()
                         .getReference("devices/$deviceId/travelMode")
-                        .updateChildren(mapOf(
-                            "active" to true,
-                            "triggeredBy" to "student",
-                            "startedAt" to System.currentTimeMillis()
-                        ))
-                    travelManager.startListening()
+                        .updateChildren(mapOf("active" to false, "disabledAt" to System.currentTimeMillis()))
                 }) {
-                    Text("Enable", color = Color(0xFF6366F1), fontWeight = FontWeight.SemiBold)
+                    Text("End Travel", color = Color(0xFF6366F1), fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showTurnOffDialog = false }) { Text("Cancel") }
             }
         )
     }
 
     Column(
-        modifier = Modifier.clickable { if (!travelActive) showDialog = true },
+        modifier = Modifier.clickable {
+            if (travelActive) {
+                if (canDisable) showTurnOffDialog = true
+                // if canDisable=false, locked by parent — do nothing
+            } else {
+                showDurationPicker = true
+            }
+        },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
             modifier = Modifier
                 .size(72.dp)
+                .graphicsLayer(scaleX = bounceScale, scaleY = bounceScale)
                 .clip(RoundedCornerShape(18.dp))
                 .background(if (travelActive) Color(0xFF6366F1) else Color(0xFFEEEEFF)),
             contentAlignment = Alignment.Center
@@ -808,10 +1108,24 @@ fun TravelModeIcon(travelManager: SkieTravelManager) {
         Text(
             text = if (travelActive) "Travelling" else "Travel",
             style = MaterialTheme.typography.labelMedium,
-            color = if (travelActive) Color(0xFF6366F1) else Color(0xFF1A1A2E),
+            color = if (travelActive) Color(0xFF6366F1) else if (useLightText) Color.White else Color(0xFF1A1A2E),
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+        if (travelActive && travelEndsAt > 0L) {
+            val endTime = remember(travelEndsAt) {
+                val cal = java.util.Calendar.getInstance().apply { timeInMillis = travelEndsAt }
+                String.format("%02d:%02d", cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE))
+            }
+            Text(
+                text = "until $endTime",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF6366F1).copy(alpha = 0.7f),
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }

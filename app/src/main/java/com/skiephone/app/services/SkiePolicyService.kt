@@ -54,6 +54,8 @@ class SkiePolicyService : Service() {
 
         try { writeImeiToRtdb() } catch (e: Exception) { android.util.Log.e("SkiePolicyService", "writeImeiToRtdb: ${e.message}") }
 
+        try { writeAppVersionToRtdb() } catch (e: Exception) { android.util.Log.e("SkiePolicyService", "writeAppVersionToRtdb: ${e.message}") }
+
         try { writeBaselineAppsIfNeeded() } catch (e: Exception) { android.util.Log.e("SkiePolicyService", "writeBaselineAppsIfNeeded: ${e.message}") }
 
         // Check if Play Store tunnel was open when device lost connectivity — close if expired
@@ -87,6 +89,28 @@ class SkiePolicyService : Service() {
         setupOnlinePresence()
 
         Log.d(TAG, "Policy service started — deviceId: $deviceId")
+    }
+
+    /**
+     * Writes DPC app versionName and versionCode to RTDB on every service start.
+     * Dashboard reads devices/{deviceId}/appVersion to display version per device row.
+     * Refresh button on dashboard does a one-time RTDB get — no listener needed.
+     */
+    private fun writeAppVersionToRtdb() {
+        try {
+            val pInfo = packageManager.getPackageInfo(packageName, 0)
+            val versionName = pInfo.versionName ?: "unknown"
+            val versionCode = androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(pInfo).toInt()
+            FirebaseDatabase.getInstance()
+                .getReference("devices/$deviceId/appVersion")
+                .setValue(mapOf(
+                    "versionName" to versionName,
+                    "versionCode" to versionCode
+                ))
+            Log.d(TAG, "appVersion written: $versionName ($versionCode)")
+        } catch (e: Exception) {
+            Log.e(TAG, "writeAppVersionToRtdb failed: ${e.message}")
+        }
     }
 
     /**

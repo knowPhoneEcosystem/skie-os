@@ -6,6 +6,8 @@ import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.telecom.TelecomManager
 import android.util.Log
@@ -17,14 +19,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-/**
- * Handles two scenarios:
- * 1. Student triggers SOS → writes to RTDB + calls parent silently
- * 2. Parent triggers listen call from dashboard → device receives RTDB command → calls parent silently
- *
- * Both enable speakerphone automatically.
- * Requires CALL_PHONE permission granted by Device Owner (done in SkiePolicyEngine.hardenDevice).
- */
 class SkieSOSManager(
     private val context: Context,
     private val deviceId: String,
@@ -36,9 +30,11 @@ class SkieSOSManager(
     private val sosRef = db.getReference("devices/$deviceId/sos")
     private val commandRef = db.getReference("devices/$deviceId/command")
     private var commandListener: ValueEventListener? = null
+    private var sosStateListener: ValueEventListener? = null
     private var lastCommandAt: Long = -1L
-
     private val scope = CoroutineScope(Dispatchers.IO)
+    private val handler = Handler(Looper.getMainLooper())
+    private var autoExpireRunnable: Runnable? = null
 
     fun startListening() {
         // Listen for LISTEN_CALL command from parent dashboard
@@ -52,11 +48,8 @@ class SkieSOSManager(
                 Log.d(TAG, "LISTEN_CALL command received")
                 scope.launch {
                     val phone = getParentPhone()
-                    if (phone != null) {
-                        placeSilentCall(phone, enableSpeaker = true)
-                    } else {
-                        Log.e(TAG, "No parent phone number found for LISTEN_CALL")
-                    }
+                    if (phone != null) placeSilentCall(phone, enableSpeaker = true)
+                    else Log.e(TAG, "No parent phone number found for LISTEN_CALL")
                 }
             }
             override fun onCancelled(error: DatabaseError) {
@@ -64,65 +57,91 @@ class SkieSOSManager(
             }
         }
         commandRef.addValueEventListener(commandListener!!)
+
+        // Listen to SOS node — schedule auto-expiry when endsAt is present
+        sosStateListener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                val active = snapshot.child("active").getValue(Boolean::class.java) ?: false
+                val endsAt = snapshot.child("endsAt").getValue(Long::class.java) ?: 0L
+                if (active && endsAt > 0L) {
+                    scheduleAutoExpiry(endsAt)
+                } else {
+                    cancelAutoExpiry()
+                }
+            }
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        sosRef.addValueEventListener(sosStateListener!!)
+
         Log.d(TAG, "startListening: SOS manager active for deviceId=$deviceId")
     }
 
     /**
-     * Called when student taps the SOS button.
-     * 1. Gets current location
-     * 2. Writes SOS event to RTDB
-     * 3. Places silent call to parent with speakerphone
-     * 4. Activates high-frequency location automatically via travelMode node
+     * Trigger SOS from child with explicit wall-clock deadline.
+     * Called from LauncherActivity after child picks duration.
      */
     @SuppressLint("MissingPermission")
-    fun triggerSOS() {
-        Log.d(TAG, "SOS triggered by student")
+    fun triggerSOS(endsAt: Long) {
+        Log.d(TAG, "SOS triggered by student, endsAt=$endsAt")
         scope.launch {
             try {
-                // 1. Get location
                 val loc = LocationServices.getFusedLocationProviderClient(context).lastLocation.await()
-
-                // 2. Write SOS to RTDB
                 val sosData = mutableMapOf<String, Any>(
                     "triggeredAt" to System.currentTimeMillis(),
-                    "active" to true
+                    "triggeredBy" to "student",
+                    "active"      to true,
+                    "endsAt"      to endsAt
                 )
                 if (loc != null) {
                     sosData["lat"] = loc.latitude
                     sosData["lng"] = loc.longitude
                 }
-                db.getReference("devices/$deviceId/sos").setValue(sosData)
-
-                // 3. Start high-frequency location via travelManager (SOS mode)
+                sosRef.setValue(sosData)
                 travelManager.startSOSLocationUpdates()
-
-                // 4. Call parent
                 val phone = getParentPhone()
-                if (phone != null) {
-                    placeSilentCall(phone, enableSpeaker = true)
-                } else {
-                    Log.w(TAG, "SOS: no parent phone number — skipping call")
-                }
-
+                if (phone != null) placeSilentCall(phone, enableSpeaker = true)
+                else Log.w(TAG, "SOS: no parent phone number — skipping call")
             } catch (e: Exception) {
                 Log.e(TAG, "SOS trigger error: ${e.message}")
             }
         }
+        scheduleAutoExpiry(endsAt)
     }
 
     /**
-     * Clears active SOS — called when parent dismisses the alert on dashboard.
+     * Clear SOS — called by child (if canChildDisableSOS=true) or auto-expiry.
      */
     fun clearSOS() {
-        db.getReference("devices/$deviceId/sos").updateChildren(
-            mapOf("active" to false, "clearedAt" to System.currentTimeMillis())
-        )
+        cancelAutoExpiry()
+        sosRef.updateChildren(mapOf(
+            "active"    to false,
+            "clearedAt" to System.currentTimeMillis()
+        ))
+        travelManager.stopSOSLocationUpdates()
+        Log.d(TAG, "SOS cleared")
     }
 
-    /**
-     * Fetches parent phone number from Firestore users/{parentId}/phone.
-     * parentId is read from deviceClaims/{deviceId}/parentId.
-     */
+    // ── Auto-expiry ───────────────────────────────────────────────────────────
+
+    private fun scheduleAutoExpiry(endsAt: Long) {
+        cancelAutoExpiry()
+        val delay = endsAt - System.currentTimeMillis()
+        if (delay <= 0L) { clearSOS(); return }
+        autoExpireRunnable = Runnable {
+            Log.d(TAG, "SOS auto-expired at endsAt=$endsAt")
+            clearSOS()
+        }
+        handler.postDelayed(autoExpireRunnable!!, delay)
+        Log.d(TAG, "SOS auto-expiry scheduled in ${delay / 1000}s")
+    }
+
+    private fun cancelAutoExpiry() {
+        autoExpireRunnable?.let { handler.removeCallbacks(it) }
+        autoExpireRunnable = null
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
     private suspend fun getParentPhone(): String? {
         return try {
             val claimSnap = firestore.collection("deviceClaims").document(deviceId).get().await()
@@ -135,11 +154,6 @@ class SkieSOSManager(
         }
     }
 
-    /**
-     * Places a silent call using TelecomManager (Device Owner privilege).
-     * Works without showing the dialer UI.
-     * enableSpeaker: true puts call on speakerphone immediately.
-     */
     @SuppressLint("MissingPermission")
     private fun placeSilentCall(phoneNumber: String, enableSpeaker: Boolean) {
         try {
@@ -147,14 +161,11 @@ class SkieSOSManager(
             val uri = Uri.fromParts("tel", phoneNumber, null)
             val extras = Bundle()
             extras.putBoolean(TelecomManager.EXTRA_START_CALL_WITH_SPEAKERPHONE, enableSpeaker)
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 telecomManager.placeCall(uri, extras)
                 Log.d(TAG, "Silent call placed to $phoneNumber, speaker=$enableSpeaker")
-
-                // Additional speakerphone enforcement after short delay
                 if (enableSpeaker) {
-                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    Handler(Looper.getMainLooper()).postDelayed({
                         val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
                         audio.isSpeakerphoneOn = true
                         audio.mode = AudioManager.MODE_IN_CALL
@@ -170,12 +181,13 @@ class SkieSOSManager(
     }
 
     fun stop() {
+        cancelAutoExpiry()
         commandListener?.let { commandRef.removeEventListener(it) }
+        sosStateListener?.let { sosRef.removeEventListener(it) }
         commandListener = null
+        sosStateListener = null
         Log.d(TAG, "stop: SOS manager stopped")
     }
 
-    companion object {
-        private const val TAG = "SkieSOSManager"
-    }
+    companion object { private const val TAG = "SkieSOSManager" }
 }

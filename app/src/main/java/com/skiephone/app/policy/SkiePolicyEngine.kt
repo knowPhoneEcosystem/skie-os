@@ -47,6 +47,7 @@ class SkiePolicyEngine(private val context: Context) {
         Log.d(TAG, "start() deviceId:$deviceId isDeviceOwner:${isDeviceOwner()}")
         grantRequiredPermissions()
         hardenDevice()
+        repinLauncherHome()
         clearStaleSuspensions()
         // Pre-load globalPolicy from RTDB cache immediately — available before Firestore auth
         // This ensures applyAppSuspension never fires with empty globalPolicyPackages on boot
@@ -156,7 +157,7 @@ class SkiePolicyEngine(private val context: Context) {
                 // globalPolicyPackages ensures Calculator, Camera, Contacts etc. are never
                 // accidentally suspended when parent approves their first app
                 val allowed = resolvedAllowed + globalPolicyPackages +
-                    context.packageName + listOfNotNull(activeFocusApp)
+                        context.packageName + listOfNotNull(activeFocusApp)
                 val toSuspend   = installed.filter { it !in allowed }.toTypedArray()
                 val toUnsuspend = installed.filter { it in allowed  }.toTypedArray()
                 Log.d(TAG, "applyAppSuspension: suspending ${toSuspend.size}, unsuspending ${toUnsuspend.size} schoolMode=$_schoolModeEnabled globalPolicy=${globalPolicyPackages.size}")
@@ -279,6 +280,10 @@ class SkiePolicyEngine(private val context: Context) {
             dpm.addUserRestriction(admin, UserManager.DISALLOW_MODIFY_ACCOUNTS)
             dpm.addUserRestriction(admin, UserManager.DISALLOW_USB_FILE_TRANSFER)
             dpm.addUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT)
+            // Block default app changes from Settings UI — API 34+ only, no-op on older OS
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                dpm.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_DEFAULT_APPS)
+            }
             Log.d(TAG, "hardenDevice: done")
         } catch (e: Exception) { Log.e(TAG, "hardenDevice: ${e.message}") }
     }

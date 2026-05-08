@@ -160,6 +160,7 @@ class LauncherActivity : SkieBaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        onBackPressedDispatcher.addCallback(backCallback)
         ensureServiceRunning()
         // Register for full activity lifetime — must receive broadcast even when paused
         // (focus app is on top when "end focus" is triggered from dashboard)
@@ -196,21 +197,35 @@ class LauncherActivity : SkieBaseActivity() {
             try { startLockTask() } catch (e: Exception) { android.util.Log.e(TAG, "re-enter lockTask: ${e.message}") }
         }
 
-        // Proxy-bounce recovery: some apps (e.g. Google Drive) use a proxy/splash Activity
-        // that finishes itself after starting the real activity in a singleTask.
-        // When the proxy finishes, the home task (launcher) surfaces even though the real
-        // activity task IS alive — it's just buried beneath the home task.
-        //
-        // Re-launching via intent goes through the proxy AGAIN → same bounce.
-        // Instead: find the existing task for the focus app and call moveTaskToFront().
-        // This surfaces the already-running real activity directly — no proxy involved.
-        // focusLaunchRecoveryDone caps this at one attempt per focus session.
-        if (currentFocusMode != "none" && !currentFocusApp.isNullOrEmpty() && !focusLaunchRecoveryDone) {
+        // Deep focus back-press recovery:
+        // When child presses back from the focus app, launcher surfaces. We must always
+        // bounce them straight back into the focus app — no cap on attempts.
+        // focusLaunchRecoveryDone is only used for focus_time proxy-bounce (one-shot recovery).
+        // For deep_focus: always redirect on every onResume until focus is released.
+        if (currentFocusMode == "deep_focus" && !currentFocusApp.isNullOrEmpty()) {
             val focusAppOnTop = isFocusAppOnTop(currentFocusApp!!)
             if (!focusAppOnTop) {
-                focusLaunchRecoveryDone = true  // set BEFORE to prevent re-entry
-                android.util.Log.d(TAG, "onResume: proxy-bounce for $currentFocusApp — attempting moveTaskToFront in 400ms")
-                mainHandler.postDelayed({ bringFocusTaskToFront(currentFocusApp!!) }, 400)
+                val appToResume = currentFocusApp!! // capture now — may be nulled before delay fires
+                android.util.Log.d(TAG, "onResume: deep_focus back-press — bouncing back to $appToResume")
+                mainHandler.postDelayed({
+                    // Double-check focus is still active before bouncing — may have been released
+                    if (currentFocusMode == "deep_focus" && currentFocusApp == appToResume) {
+                        bringFocusTaskToFront(appToResume)
+                    }
+                }, 200)
+            }
+        } else if (currentFocusMode == "focus_time" && !currentFocusApp.isNullOrEmpty() && !focusLaunchRecoveryDone) {
+            // focus_time proxy-bounce recovery — one-shot only (proxy activity pattern)
+            val focusAppOnTop = isFocusAppOnTop(currentFocusApp!!)
+            if (!focusAppOnTop) {
+                focusLaunchRecoveryDone = true
+                val appToResume = currentFocusApp!! // capture now — may be nulled before delay fires
+                android.util.Log.d(TAG, "onResume: focus_time proxy-bounce for $appToResume — moveTaskToFront in 400ms")
+                mainHandler.postDelayed({
+                    if (currentFocusMode == "focus_time" && currentFocusApp == appToResume) {
+                        bringFocusTaskToFront(appToResume)
+                    }
+                }, 400)
             }
         }
 
@@ -235,9 +250,13 @@ class LauncherActivity : SkieBaseActivity() {
         try { unregisterReceiver(packageReceiver) } catch (e: Exception) { /* not registered */ }
     }
 
-    @Suppress("MissingSuperCall")
-    override fun onBackPressed() {
-        // Swallow back — launcher has no parent
+    // Swallow all back gestures — launcher has no parent to return to.
+    // OnBackPressedDispatcher is the only API that intercepts back gestures on Android 13+.
+    // The deprecated onBackPressed() override is bypassed entirely by gesture navigation.
+    private val backCallback = object : androidx.activity.OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            // Intentionally do nothing — launcher cannot be backed out of
+        }
     }
 
     /**
@@ -327,10 +346,13 @@ class LauncherActivity : SkieBaseActivity() {
 
     @Suppress("DEPRECATION")
     private fun ensureServiceRunning() {
-        val manager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val running = manager.getRunningServices(Integer.MAX_VALUE)
-            .any { it.service.className == SkiePolicyService::class.java.name }
-        if (!running) startService(Intent(this, SkiePolicyService::class.java))
+        // SkiePolicyService.isRunning is a static flag set in service onCreate/onDestroy.
+        // Avoids the deprecated ActivityManager.getRunningServices() which is unreliable
+        // on Android 12+ and can cause unnecessary service restarts (re-running hardenDevice).
+        if (!SkiePolicyService.isRunning) {
+            android.util.Log.d(TAG, "ensureServiceRunning: service not running — starting")
+            startService(Intent(this, SkiePolicyService::class.java))
+        }
     }
 
     companion object { private const val TAG = "LauncherActivity" }

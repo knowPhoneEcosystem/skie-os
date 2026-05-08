@@ -24,8 +24,8 @@ android {
         applicationId = "com.skiephone.app"
         minSdk = 31
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.1.6"
+        versionCode = 20
+        versionName = "1.1.17"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

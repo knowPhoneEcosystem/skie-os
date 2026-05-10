@@ -539,6 +539,13 @@ class SkieCommandManager(private val context: Context) {
         database.getReference("devices/$deviceId/hardenLog/${SkiePolicyEngine.STEP_BLOCK_UNINSTALL}").setValue(
             mapOf("success" to uninstallBlocked, "ts" to System.currentTimeMillis())
         )
+        // Check FRP policy
+        val frpPolicy = dpm.getFactoryResetProtectionPolicy(componentName)
+        val frpActive = frpPolicy?.isFactoryResetProtectionEnabled == true &&
+                frpPolicy.factoryResetProtectionAccounts.isNotEmpty()
+        database.getReference("devices/$deviceId/hardenLog/${SkiePolicyEngine.STEP_FRP}").setValue(
+            mapOf("success" to frpActive, "ts" to System.currentTimeMillis())
+        )
         database.getReference("devices/$deviceId/command").removeValue()
         Log.d(TAG, "checkCompliance: done")
     }

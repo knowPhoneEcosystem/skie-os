@@ -284,6 +284,7 @@ class SkiePolicyEngine(private val context: Context) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 dpm.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_DEFAULT_APPS)
             }
+            applyFrpPolicy(true)
             Log.d(TAG, "hardenDevice: done")
         } catch (e: Exception) { Log.e(TAG, "hardenDevice: ${e.message}") }
     }
@@ -383,6 +384,7 @@ class SkiePolicyEngine(private val context: Context) {
             ).forEach { try { dpm.clearUserRestriction(admin, it) } catch (e: Exception) { Log.e(TAG, "clearRestriction $it: ${e.message}") } }
             dpm.setScreenCaptureDisabled(admin, false)
             dpm.setUninstallBlocked(admin, context.packageName, false)
+            applyFrpPolicy(false)
             clearStaleSuspensions()
             Log.d(TAG, "deharden: complete")
         } catch (e: Exception) { Log.e(TAG, "deharden: ${e.message}") }
@@ -406,6 +408,7 @@ class SkiePolicyEngine(private val context: Context) {
                 "suspend_play_store"           -> suspendPlayStore()
                 "block_uninstall_skie"         -> dpm.setUninstallBlocked(admin, context.packageName, true)
                 "dns_filtering"                -> applyDnsFiltering(true)
+                STEP_FRP                       -> applyFrpPolicy(true)
                 else -> Log.w(TAG, "applyHardeningStep: unknown stepId=$stepId")
             }
             Log.d(TAG, "applyHardeningStep: $stepId applied")
@@ -435,6 +438,7 @@ class SkiePolicyEngine(private val context: Context) {
                 "suspend_play_store"               -> dpm.setPackagesSuspended(admin, arrayOf(PLAY_STORE_PKG), false)
                 "block_uninstall_skie"             -> dpm.setUninstallBlocked(admin, context.packageName, false)
                 "dns_filtering"                    -> applyDnsFiltering(false)
+                STEP_FRP                           -> applyFrpPolicy(false)
                 else -> Log.w(TAG, "removeHardeningStep: unknown stepId=$stepId")
             }
             Log.d(TAG, "removeHardeningStep: $stepId removed")
@@ -558,6 +562,38 @@ class SkiePolicyEngine(private val context: Context) {
         }.start()
     }
 
+    /**
+     * Apply or remove the hardware-backed Factory Reset Protection (FRP) policy.
+     * When enabled: only the Skie admin Google account can set up the device after a wipe.
+     * When disabled: clears the DPM FRP policy (standard FRP still applies via logged-in accounts).
+     * Requires API 30+ (minSdk already >= 30).
+     * Idempotent — safe to call on every boot if policy is already set.
+     */
+    fun applyFrpPolicy(enabled: Boolean) {
+        if (!isDeviceOwner()) return
+        try {
+            if (enabled) {
+                val policy = android.app.admin.FactoryResetProtectionPolicy.Builder()
+                    .setFactoryResetProtectionAccounts(listOf(FRP_ADMIN_ACCOUNT_ID))
+                    .setFactoryResetProtectionEnabled(true)
+                    .build()
+                dpm.setFactoryResetProtectionPolicy(admin, policy)
+                // Force GMS to sync the new FRP config to the hardware-backed partition immediately
+                val syncIntent = android.content.Intent("com.google.android.gms.auth.FRP_CONFIG_CHANGED").apply {
+                    setPackage("com.google.android.gms")
+                    addFlags(android.content.Intent.FLAG_RECEIVER_FOREGROUND)
+                }
+                context.sendBroadcast(syncIntent)
+                Log.d(TAG, "applyFrpPolicy: FRP hardened with admin account $FRP_ADMIN_ACCOUNT_ID")
+            } else {
+                dpm.setFactoryResetProtectionPolicy(admin, null)
+                Log.d(TAG, "applyFrpPolicy: FRP policy cleared")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "applyFrpPolicy enabled=$enabled: ${e.message}")
+        }
+    }
+
     fun isDeviceOwner() = try { dpm.isDeviceOwnerApp(context.packageName) } catch (e: Exception) { false }
 
     fun requestDeviceAdmin() {
@@ -588,5 +624,11 @@ class SkiePolicyEngine(private val context: Context) {
         const val STEP_SUSPEND_PLAY_STORE            = "suspend_play_store"
         const val STEP_BLOCK_UNINSTALL               = "block_uninstall_skie"
         const val STEP_DNS_FILTERING                 = "dns_filtering"
+        const val STEP_FRP                           = "frp_hardening"
+
+        // Numeric Google Account ID for the Skie admin account.
+        // This is the only account allowed to set up the device after a factory reset.
+        // Obtained from: https://people.googleapis.com/v1/people/me?personFields=metadata
+        private const val FRP_ADMIN_ACCOUNT_ID = "100099975648958309151"
     }
 }

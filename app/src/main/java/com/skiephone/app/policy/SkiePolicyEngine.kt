@@ -301,6 +301,25 @@ class SkiePolicyEngine(private val context: Context) {
                 dpm.setPermissionGrantState(admin, context.packageName, it, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED)
             } catch (e: Exception) { Log.e(TAG, "grant $it: ${e.message}") }
         }
+
+        // Grant SYSTEM_ALERT_WINDOW via AppOpsManager reflection so TYPE_APPLICATION_OVERLAY
+        // windows work without user interaction. setMode is a hidden API — must use reflection.
+        // OP_SYSTEM_ALERT_WINDOW = 24, MODE_ALLOWED = 0.
+        // Called on every service start — idempotent, persists across restarts.
+        try {
+            val appOps = context.getSystemService(Context.APP_OPS_SERVICE)
+            val setModeMethod = appOps!!.javaClass.getDeclaredMethod(
+                "setMode",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                String::class.java,
+                Int::class.javaPrimitiveType
+            )
+            setModeMethod.invoke(appOps, 24, context.applicationInfo.uid, context.packageName, 0)
+            Log.d(TAG, "grantRequiredPermissions: SYSTEM_ALERT_WINDOW granted via AppOps reflection")
+        } catch (e: Exception) {
+            Log.e(TAG, "grantRequiredPermissions: SYSTEM_ALERT_WINDOW AppOps grant failed: ${e.message}")
+        }
     }
 
     fun suspendPlayStore() {

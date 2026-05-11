@@ -27,7 +27,10 @@ class SkiePolicyService : Service() {
     private lateinit var locationManager: SkieLocationManager
     private lateinit var travelManager: SkieTravelManager
     private lateinit var sosManager: SkieSOSManager
+    private lateinit var geofenceManager: SkieGeofenceManager
     private var deviceId: String = ""
+
+
 
     override fun onCreate() {
         super.onCreate()
@@ -51,25 +54,30 @@ class SkiePolicyService : Service() {
 
         startForeground()
 
+        // Temporary: enable Firebase RTDB debug logging to diagnose online presence drops.
+        // Remove once root cause is confirmed.
+        FirebaseDatabase.getInstance().setLogLevel(com.google.firebase.database.Logger.Level.DEBUG)
+
         deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
 
         // Sign in anonymously so all Firebase reads/writes satisfy security rules.
-        // setupOnlinePresence() is called FIRST inside the success callback — before
-        // any other Firebase work — so the .info/connected event is never missed even
-        // if it fires within milliseconds of the process starting (e.g. after OTA update).
+        //
+        // CRITICAL ORDERING — do NOT call setupOnlinePresence() or startFirebaseWork()
+        // directly here. writeAnonUidToDeviceClaims() gates both calls inside its own
+        // addOnSuccessListener, ensuring anonUid is committed to RTDB server-side
+        // BEFORE any listener attaches. Without this gate, all listeners fire before
+        // the device's identity is established, get Permission Denied from RTDB rules,
+        // and are permanently cancelled (onCancelled never auto-retries on permission errors).
+        // This was the root cause of the double-restart-after-reprovision bug.
         val auth = FirebaseAuth.getInstance()
         if (auth.currentUser != null) {
             Log.d(TAG, "Firebase already signed in: ${auth.currentUser?.uid}")
             writeAnonUidToDeviceClaims(auth.currentUser!!.uid)
-            setupOnlinePresence()   // ← FIRST, before anything else
-            startFirebaseWork()
         } else {
             auth.signInAnonymously()
                 .addOnSuccessListener {
                     Log.d(TAG, "Firebase anonymous sign-in OK: ${auth.currentUser?.uid}")
                     writeAnonUidToDeviceClaims(auth.currentUser!!.uid)
-                    setupOnlinePresence()   // ← FIRST, immediately after auth
-                    startFirebaseWork()
                 }
                 .addOnFailureListener { e ->
                     Log.e(TAG, "Firebase sign-in FAILED: ${e.message} — retrying in 5s")
@@ -78,12 +86,12 @@ class SkiePolicyService : Service() {
                             .addOnSuccessListener {
                                 Log.d(TAG, "Firebase sign-in retry OK")
                                 writeAnonUidToDeviceClaims(auth.currentUser!!.uid)
-                                setupOnlinePresence()
-                                startFirebaseWork()
                             }
                             .addOnFailureListener { e2 ->
                                 Log.e(TAG, "Firebase sign-in retry FAILED: ${e2.message} — starting offline")
-                                // Start anyway — RTDB offline persistence queues writes
+                                // Both retries failed — start without identity (offline mode).
+                                // RTDB offline persistence will queue writes; listeners will
+                                // recover on next restart when sign-in succeeds.
                                 setupOnlinePresence()
                                 startFirebaseWork()
                             }
@@ -162,6 +170,9 @@ class SkiePolicyService : Service() {
         sosManager = SkieSOSManager(this, deviceId, travelManager)
         sosManager.startListening()
 
+        geofenceManager = SkieGeofenceManager(this, deviceId)
+        geofenceManager.start()
+
         Log.d(TAG, "startFirebaseWork complete — all listeners attached")
     }
 
@@ -176,17 +187,24 @@ class SkiePolicyService : Service() {
     }
 
     private fun writeImeiToRtdb() {
-        val tm = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
-        val imei = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            tm.getImei(0)
-        } else {
-            @Suppress("DEPRECATION") tm.deviceId
-        }
-        if (!imei.isNullOrBlank()) {
-            FirebaseDatabase.getInstance()
-                .getReference("devices/$deviceId/imei")
-                .setValue(imei)
-            Log.d(TAG, "IMEI written: $imei")
+        try {
+            val tm = getSystemService(TELEPHONY_SERVICE) as TelephonyManager
+            val imei = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                tm.getImei(0)
+            } else {
+                @Suppress("DEPRECATION") tm.deviceId
+            }
+            if (!imei.isNullOrBlank()) {
+                FirebaseDatabase.getInstance()
+                    .getReference("devices/$deviceId/imei")
+                    .setValue(imei)
+                Log.d(TAG, "IMEI written: $imei")
+            }
+        } catch (e: SecurityException) {
+            // READ_PRIVILEGED_PHONE_STATE is a platform-signed permission —
+            // unavailable to Device Owner apps. IMEI write skipped; ANDROID_ID
+            // is the canonical device identity throughout the app.
+            Log.d(TAG, "IMEI unavailable (privileged permission required) — skipping")
         }
     }
 
@@ -204,18 +222,82 @@ class SkiePolicyService : Service() {
     }
 
     /**
-     * Writes the device's anonymous Firebase UID to deviceClaims/{deviceId}/anonUid.
-     * This allows RTDB rules to identify the device by checking anonUid === auth.uid
-     * instead of relying on auth.uid === $deviceId (which never matches since the
-     * device uses a random anonymous UID, not the Android ID).
-     * Safe to call on every start — idempotent, same UID persists across restarts.
+     * STEP 1 — Write anonUid to RTDB and gate all Firebase listener startup.
+     *
+     * This is the critical ordering fix for the double-restart-after-reprovision bug:
+     *   - setupOnlinePresence() and startFirebaseWork() are called ONLY inside
+     *     addOnSuccessListener — after the server confirms the anonUid write.
+     *   - This guarantees device identity is established in RTDB before any listener
+     *     attaches, so RTDB rules pass on first connect instead of firing Permission
+     *     Denied and permanently cancelling all listeners.
+     *
+     * STEP 2 (non-blocking, after gate) — write Firestore deviceAuth/{anonUid}
+     *   - Reads parentId from RTDB deviceClaims/{deviceId}/parentId
+     *   - Cleans up old deviceAuth doc if anonUid changed (re-provision)
+     *   - Writes new deviceAuth/{anonUid} → { parentId, deviceId }
+     *   - This allows device to read Firestore users/{parentId} for SOS phone etc.
+     *   - Non-blocking — does not delay listener startup
      */
     private fun writeAnonUidToDeviceClaims(uid: String) {
-        FirebaseDatabase.getInstance()
-            .getReference("deviceClaims/$deviceId/anonUid")
-            .setValue(uid)
-            .addOnSuccessListener { Log.d(TAG, "anonUid written to deviceClaims: $uid") }
-            .addOnFailureListener { e -> Log.e(TAG, "anonUid write failed: ${e.message}") }
+        val rtdb = FirebaseDatabase.getInstance()
+        val anonUidRef = rtdb.getReference("deviceClaims/$deviceId/anonUid")
+        val firestore = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+
+        // STEP 1: Write anonUid — wait for server confirmation before starting listeners.
+        // Rule: newData.val() === auth.uid — always passes, allows re-provision overwrite.
+        anonUidRef.setValue(uid)
+            .addOnSuccessListener {
+                Log.d(TAG, "anonUid written to RTDB: $uid — starting Firebase work")
+                // Identity established — NOW safe to attach all listeners
+                setupOnlinePresence()
+                startFirebaseWork()
+                // STEP 2: Firestore deviceAuth — non-blocking, runs after listeners start
+                writeDeviceAuthAsync(uid, firestore, rtdb)
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "anonUid RTDB write failed: ${e.message} — starting Firebase work anyway")
+                // Write failed but start listeners — will recover on reconnect/restart
+                setupOnlinePresence()
+                startFirebaseWork()
+            }
+    }
+
+    /**
+     * Non-blocking: reads parentId from RTDB, cleans up old Firestore deviceAuth doc,
+     * writes new deviceAuth/{anonUid} → { parentId, deviceId }.
+     * Called after listeners are already running — does not block startup.
+     */
+    private fun writeDeviceAuthAsync(
+        uid: String,
+        firestore: com.google.firebase.firestore.FirebaseFirestore,
+        rtdb: com.google.firebase.database.FirebaseDatabase
+    ) {
+        rtdb.getReference("deviceClaims/$deviceId").get()
+            .addOnSuccessListener { snap ->
+                val oldAnonUid = snap.child("anonUid").getValue(String::class.java)
+                val parentId = snap.child("parentId").getValue(String::class.java)
+
+                // Clean up old deviceAuth doc if anonUid changed (re-provision)
+                if (oldAnonUid != null && oldAnonUid != uid) {
+                    firestore.collection("deviceAuth").document(oldAnonUid)
+                        .delete()
+                        .addOnSuccessListener { Log.d(TAG, "Old deviceAuth doc deleted: $oldAnonUid") }
+                        .addOnFailureListener { e -> Log.e(TAG, "Old deviceAuth delete failed: ${e.message}") }
+                }
+
+                // Write new deviceAuth doc so Firestore rules can verify device identity
+                if (parentId != null) {
+                    firestore.collection("deviceAuth").document(uid)
+                        .set(mapOf("parentId" to parentId, "deviceId" to deviceId))
+                        .addOnSuccessListener { Log.d(TAG, "deviceAuth written: $uid → parentId=$parentId") }
+                        .addOnFailureListener { e -> Log.e(TAG, "deviceAuth write failed: ${e.message}") }
+                } else {
+                    Log.w(TAG, "parentId not in RTDB — deviceAuth not written (device may not be paired yet)")
+                }
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "deviceClaims RTDB read failed for deviceAuth: ${e.message}")
+            }
     }
 
     private fun startForeground() {
@@ -258,6 +340,7 @@ class SkiePolicyService : Service() {
         if (::locationManager.isInitialized) locationManager.stop()
         if (::travelManager.isInitialized) travelManager.stop()
         if (::sosManager.isInitialized) sosManager.stop()
+        if (::geofenceManager.isInitialized) geofenceManager.stop()
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {

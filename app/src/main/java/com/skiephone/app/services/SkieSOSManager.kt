@@ -142,16 +142,67 @@ class SkieSOSManager(
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /**
+     * Gets parent phone number for SOS calls.
+     *
+     * Strategy (offline-safe):
+     *   1. Try to read fresh from Firestore users/{parentId}/phone — works because
+     *      device now has a deviceAuth/{anonUid} doc that Firestore rules use to
+     *      verify device identity and grant read access to the parent's user doc.
+     *   2. On success — cache the number in SharedPreferences for offline use.
+     *   3. If Firestore read fails (no internet) — fall back to SharedPreferences cache.
+     *
+     * parentId source: RTDB deviceClaims/{deviceId}/parentId — read once, held in memory.
+     */
     private suspend fun getParentPhone(): String? {
+        // Step 1: Get parentId from RTDB deviceClaims
         return try {
-            val claimSnap = firestore.collection("deviceClaims").document(deviceId).get().await()
-            val parentId = claimSnap.getString("parentId") ?: return null
-            val userSnap = firestore.collection("users").document(parentId).get().await()
-            userSnap.getString("phone")
+            val parentId = FirebaseDatabase.getInstance()
+                .getReference("deviceClaims/$deviceId/parentId")
+                .get().await()
+                .getValue(String::class.java)
+
+            if (parentId == null) {
+                Log.w(TAG, "getParentPhone: parentId not found in RTDB — device may not be paired")
+                return getCachedPhone()
+            }
+
+            // Step 2: Read phone from Firestore users/{parentId} directly
+            // Allowed by Firestore rule: deviceAuth/{anonUid}.parentId == userId
+            val phone = try {
+                val snap = firestore.collection("users").document(parentId).get().await()
+                snap.getString("phone")
+            } catch (e: Exception) {
+                Log.w(TAG, "getParentPhone: Firestore read failed (${e.message}) — using cache")
+                null
+            }
+
+            if (phone != null) {
+                // Step 3: Cache for offline use
+                cachePhone(phone)
+                Log.d(TAG, "getParentPhone: fresh number from Firestore, cached")
+                phone
+            } else {
+                // Firestore returned null or failed — use cache
+                getCachedPhone()
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "getParentPhone error: ${e.message}")
-            null
+            Log.e(TAG, "getParentPhone error: ${e.message} — using cache")
+            getCachedPhone()
         }
+    }
+
+    private fun cachePhone(phone: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_PHONE, phone).apply()
+    }
+
+    private fun getCachedPhone(): String? {
+        val cached = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_PHONE, null)
+        if (cached != null) Log.d(TAG, "getParentPhone: using cached number")
+        else Log.w(TAG, "getParentPhone: no cached number — SOS call cannot proceed")
+        return cached
     }
 
     @SuppressLint("MissingPermission")
@@ -189,5 +240,9 @@ class SkieSOSManager(
         Log.d(TAG, "stop: SOS manager stopped")
     }
 
-    companion object { private const val TAG = "SkieSOSManager" }
+    companion object {
+        private const val TAG = "SkieSOSManager"
+        private const val PREFS = "skie_sos"
+        private const val KEY_PHONE = "parent_phone"
+    }
 }

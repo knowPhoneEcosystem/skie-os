@@ -18,6 +18,15 @@ class SkieCommandManager(private val context: Context) {
 
     companion object {
         const val TAG = "SkieCommandManager"
+        private const val PREFS = "skie_command"
+        private const val KEY_LAST_CMD_AT = "last_cmd_issued_at"
+        // Commands older than this are stale — ignore and clear
+        private const val MAX_AGE_MS = 30_000L
+        // Destructive commands have a tighter staleness window
+        private const val MAX_AGE_DESTRUCTIVE_MS = 10_000L
+        private val DESTRUCTIVE_COMMANDS = setOf(
+            "REMOVE_DEVICE_OWNER", "FACTORY_RESET", "DEHARDEN", "RESTART_PHONE"
+        )
     }
 
     private val database = FirebaseDatabase.getInstance()
@@ -36,6 +45,19 @@ class SkieCommandManager(private val context: Context) {
 
     @Volatile private var lastExecutedIssuedAt: Long = -1L
 
+    init {
+        // Restore last executed issuedAt from SharedPreferences so dedup
+        // survives process restart — prevents stale commands re-executing on reboot.
+        lastExecutedIssuedAt = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong(KEY_LAST_CMD_AT, -1L)
+        Log.d(TAG, "Restored lastExecutedIssuedAt=$lastExecutedIssuedAt")
+    }
+
+    private fun persistLastExecutedIssuedAt(issuedAt: Long) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putLong(KEY_LAST_CMD_AT, issuedAt).apply()
+    }
+
     fun startListening() {
         val commandRef = database.getReference("devices/$deviceId/command")
         commandRef.addValueEventListener(object : ValueEventListener {
@@ -53,32 +75,48 @@ class SkieCommandManager(private val context: Context) {
                 val issuedAt = snapshot.child("issuedAt")
                     .getValue(Long::class.java) ?: 0L
 
+                // FIX 2: Dedup using persisted lastExecutedIssuedAt — survives restarts
                 if (issuedAt != 0L && issuedAt == lastExecutedIssuedAt) {
                     Log.d(TAG, "Skipping duplicate command (issuedAt=$issuedAt): $action")
                     return
                 }
 
+                // FIX 1: Staleness guard — ignore commands issued before this session
+                // Destructive commands (REMOVE_DEVICE_OWNER, FACTORY_RESET etc) have
+                // tighter window to prevent re-execution after re-provision.
+                if (issuedAt > 0L) {
+                    val age = System.currentTimeMillis() - issuedAt
+                    val maxAge = if (action in DESTRUCTIVE_COMMANDS) MAX_AGE_DESTRUCTIVE_MS else MAX_AGE_MS
+                    if (age > maxAge) {
+                        Log.w(TAG, "Stale command ignored: $action age=${age}ms (max=${maxAge}ms) — clearing node")
+                        database.getReference("devices/$deviceId/command").removeValue()
+                        return
+                    }
+                }
+
                 Log.d(TAG, "Command received: $action (issuedAt=$issuedAt)")
                 lastExecutedIssuedAt = issuedAt
+                persistLastExecutedIssuedAt(issuedAt)
 
                 when (action) {
-                    "REMOVE_DEVICE_OWNER"   -> removeDeviceOwner()
-                    "FACTORY_RESET"         -> factoryReset()
-                    "DEHARDEN"              -> deharden()
-                    "TOGGLE_PLAY_STORE"     -> togglePlayStore(snapshot)
-                    "INSTALL_APP"           -> installApp(snapshot)
-                    "UNINSTALL_APP"         -> uninstallApp(snapshot)
-                    "APPLY_HARDENING_STEP"  -> applyHardeningStep(snapshot)
+                    "REMOVE_DEVICE_OWNER"       -> removeDeviceOwner()
+                    "FACTORY_RESET"             -> factoryReset()
+                    "DEHARDEN"                  -> deharden()
+                    "TOGGLE_PLAY_STORE"         -> togglePlayStore(snapshot)
+                    "INSTALL_APP"               -> installApp(snapshot)
+                    "UNINSTALL_APP"             -> uninstallApp(snapshot)
+                    "APPLY_HARDENING_STEP"      -> applyHardeningStep(snapshot)
                     "APPLY_ALL_HARDENING_STEPS" -> applyAllHardeningSteps()
                     "RESTART_SERVICE"           -> restartService()
                     "DISTRACTION_TIMER"         -> handleDistractionTimer(snapshot)
                     "CANCEL_DISTRACTION_TIMER"  -> handleCancelDistractionTimer(snapshot)
-                    "REMOVE_HARDENING_STEP" -> removeHardeningStep(snapshot)
-                    "CHECK_COMPLIANCE"      -> checkCompliance()
-                    "POWER_OFF_DISABLE"     -> setPowerOffDisabled(snapshot)
-                    "SUSPEND_APP"           -> suspendApp(snapshot, true)
-                    "UNSUSPEND_APP"         -> suspendApp(snapshot, false)
-                    "SYNC_POLICY"           -> syncPolicy()
+                    "REMOVE_HARDENING_STEP"     -> removeHardeningStep(snapshot)
+                    "CHECK_COMPLIANCE"          -> checkCompliance()
+                    "POWER_OFF_DISABLE"         -> setPowerOffDisabled(snapshot)
+                    "SUSPEND_APP"               -> suspendApp(snapshot, true)
+                    "UNSUSPEND_APP"             -> suspendApp(snapshot, false)
+                    "SYNC_POLICY"               -> syncPolicy()
+                    "RESTART_PHONE"             -> restartPhone()
                     else -> Log.w(TAG, "Unknown command: $action")
                 }
             }
@@ -116,6 +154,7 @@ class SkieCommandManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to remove device owner: ${e.message}")
             lastExecutedIssuedAt = -1L
+            persistLastExecutedIssuedAt(-1L)
         }
     }
 
@@ -126,6 +165,7 @@ class SkieCommandManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Factory reset failed: ${e.message}")
             lastExecutedIssuedAt = -1L
+            persistLastExecutedIssuedAt(-1L)
         }
     }
 
@@ -140,6 +180,7 @@ class SkieCommandManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Deharden failed: ${e.message}")
             lastExecutedIssuedAt = -1L
+            persistLastExecutedIssuedAt(-1L)
         }
     }
 
@@ -595,6 +636,29 @@ class SkieCommandManager(private val context: Context) {
             Log.e(TAG, "syncPolicy: ${e.message}")
         }
         database.getReference("devices/$deviceId/command").removeValue()
+    }
+
+    /**
+     * RESTART_PHONE — shows a full-screen system overlay countdown (30s) then reboots.
+     * Overlay is drawn via SkieRestartService using TYPE_APPLICATION_OVERLAY so it
+     * appears over all apps, not just the launcher.
+     * Command node is cleared BEFORE starting the service so the stale command
+     * guard prevents re-execution after the reboot.
+     */
+    private fun restartPhone() {
+        Log.d(TAG, "RESTART_PHONE: clearing command node then starting restart service")
+        // Clear command node FIRST — ensures post-reboot device ignores this command
+        // even if SharedPrefs is cleared (e.g. app data wipe before reboot)
+        database.getReference("devices/$deviceId/command").removeValue()
+        try {
+            val intent = android.content.Intent(
+                context,
+                com.skiephone.app.services.SkieRestartService::class.java
+            )
+            context.startForegroundService(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "RESTART_PHONE: failed to start SkieRestartService: ${e.message}")
+        }
     }
 
     private fun writeInstallResult(packageName: String, success: Boolean, error: String?) {

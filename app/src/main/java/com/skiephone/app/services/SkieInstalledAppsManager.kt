@@ -252,6 +252,12 @@ class SkieInstalledAppsManager(private val context: Context) {
 
     // ── Handle new app install ────────────────────────────────────────────────
     private fun handleNewInstall(packageName: String) {
+        // Only enforce app policy after wizard is complete
+        if (!com.skiephone.app.util.SkiePrefManager.isWizardComplete(context)) {
+            Log.d(TAG, "handleNewInstall: wizard not complete — allowing $packageName freely")
+            sync()
+            return
+        }
         try {
             val effectiveRef = rtdb.getReference("devices/$deviceId/effectiveApps")
             effectiveRef.get()

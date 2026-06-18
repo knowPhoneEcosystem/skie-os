@@ -144,8 +144,6 @@ class SkiePolicyService : Service() {
         try { writeAppVersionToRtdb() } catch (e: Exception) { Log.e(TAG, "writeAppVersionToRtdb: ${e.message}") }
         try { writeBaselineAppsIfNeeded() } catch (e: Exception) { Log.e(TAG, "writeBaselineAppsIfNeeded: ${e.message}") }
 
-        com.skiephone.app.admin.PlayStoreTunnelReceiver.checkAndCloseStaleTunnel(this)
-
         policyEngine = SkiePolicyEngine(this)
         policyEngine.start()
 

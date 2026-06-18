@@ -32,21 +32,11 @@
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
-
-        <activity
-            android:name=".launcher.LauncherActivity"
-            android:exported="true"
-            android:launchMode="singleTask">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.HOME" />
-                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
@@ -91,7 +81,6 @@
         <receiver
             android:name=".admin.UpdateReceiver"
             android:exported="true" />
-        <receiver android:name=".admin.PlayStoreTunnelReceiver" android:exported="false" />
 
         <service
             android:name=".services.SkieAccessibilityService"

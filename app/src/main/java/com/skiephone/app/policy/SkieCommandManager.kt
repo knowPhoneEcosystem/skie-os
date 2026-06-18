@@ -102,7 +102,6 @@ class SkieCommandManager(private val context: Context) {
                     "REMOVE_DEVICE_OWNER"       -> removeDeviceOwner()
                     "FACTORY_RESET"             -> factoryReset()
                     "DEHARDEN"                  -> deharden()
-                    "TOGGLE_PLAY_STORE"         -> togglePlayStore(snapshot)
                     "INSTALL_APP"               -> installApp(snapshot)
                     "UNINSTALL_APP"             -> uninstallApp(snapshot)
                     "APPLY_HARDENING_STEP"      -> applyHardeningStep(snapshot)
@@ -169,71 +168,43 @@ class SkieCommandManager(private val context: Context) {
         }
     }
 
+    /**
+     * DEHARDEN command from dashboard — undoes everything: restrictions removed,
+     * verified cleared, and every app on the device unsuspended/unhidden.
+     * Shares the exact same logic as the in-app Offboarding screen's steps 1-3
+     * (SkieDehardenRunner / SkieDehardenVerifier / SkieRestoreAppsRunner) so
+     * dashboard-triggered and on-device-triggered deharden never diverge.
+     * Headless — no progress UI, no RTDB result writeback, just runs to completion.
+     */
     private fun deharden() {
         try {
-            Log.d(TAG, "Deharden initiated")
+            Log.d(TAG, "Deharden initiated (dashboard)")
             val engine = SkiePolicyEngine(context)
-            engine.deharden()
-            database.getReference("devices/$deviceId/command").removeValue()
-            database.getReference("devices/$deviceId/status").setValue("dehardened")
-            Log.d(TAG, "Deharden complete")
+            com.skiephone.app.compliance.SkieDehardenRunner.runAll(
+                context, engine,
+                onProgress = { _, _ -> /* headless — no UI to update */ },
+                onComplete = { _ ->
+                    com.skiephone.app.compliance.SkieDehardenVerifier.runAll(
+                        context,
+                        onProgress = { _, _ -> /* headless */ },
+                        onComplete = { _ ->
+                            com.skiephone.app.compliance.SkieRestoreAppsRunner.runAll(
+                                context,
+                                onProgress = { _, _, _ -> /* headless */ },
+                                onComplete = { _ ->
+                                    database.getReference("devices/$deviceId/command").removeValue()
+                                    database.getReference("devices/$deviceId/status").setValue("dehardened")
+                                    Log.d(TAG, "Deharden complete (dashboard)")
+                                }
+                            )
+                        }
+                    )
+                }
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Deharden failed: ${e.message}")
             lastExecutedIssuedAt = -1L
             persistLastExecutedIssuedAt(-1L)
-        }
-    }
-
-    /**
-     * TOGGLE_PLAY_STORE — open Play Store tunnel for durationMs (default 120s).
-     * Command payload: { action: "TOGGLE_PLAY_STORE", durationMs: 120000 }
-     */
-    private fun togglePlayStore(snapshot: DataSnapshot) {
-        val durationMs = snapshot.child("durationMs").getValue(Long::class.java) ?: 120_000L
-
-        // durationMs = 0 means parent toggled off — close tunnel immediately
-        if (durationMs == 0L) {
-            Log.d(TAG, "togglePlayStore: close command received")
-            com.skiephone.app.admin.PlayStoreTunnelReceiver.closeTunnel(context)
-            database.getReference("devices/$deviceId/command").removeValue()
-            return
-        }
-
-        val tunnelEndMs = System.currentTimeMillis() + durationMs
-        try {
-            Log.d(TAG, "togglePlayStore: opening tunnel for ${durationMs}ms")
-            val engine = SkiePolicyEngine(context)
-
-            // Add Play Store to effectiveApps so it appears on launcher
-            val effectiveAppsRef = database.getReference("devices/$deviceId/effectiveApps")
-            effectiveAppsRef.get().addOnSuccessListener { snapshot2 ->
-                val current = mutableListOf<Map<String, Any>>()
-                snapshot2.children.forEach { child ->
-                    val pkg = child.child("packageName").getValue(String::class.java) ?: return@forEach
-                    if (pkg != SkiePolicyEngine.PLAY_STORE_PKG) {
-                        current.add(mapOf(
-                            "packageName" to pkg,
-                            "appName" to (child.child("appName").getValue(String::class.java) ?: pkg),
-                            "category" to (child.child("category").getValue(String::class.java) ?: "other")
-                        ))
-                    }
-                }
-                current.add(mapOf(
-                    "packageName" to SkiePolicyEngine.PLAY_STORE_PKG,
-                    "appName" to "Play Store",
-                    "category" to "other"
-                ))
-                effectiveAppsRef.setValue(current)
-                Log.d(TAG, "togglePlayStore: Play Store added to effectiveApps")
-            }
-
-            engine.unsuspendPlayStoreTemporarily(durationMs)
-            database.getReference("devices/$deviceId/playStoreTunnel").setValue(true)
-            database.getReference("devices/$deviceId/playStoreTunnelEndsAt").setValue(tunnelEndMs)
-            database.getReference("devices/$deviceId/command").removeValue()
-        } catch (e: Exception) {
-            Log.e(TAG, "togglePlayStore failed: ${e.message}")
-            lastExecutedIssuedAt = -1L
         }
     }
 
@@ -329,20 +300,16 @@ class SkieCommandManager(private val context: Context) {
             return
         }
 
-        // Case 3 — brand new app, open Play Store as last resort
+        // Case 3 — brand new app, open Play Store as last resort.
+        // Play Store is now an ordinary app controlled via App Management — if it's
+        // suspended, this launch will simply fail silently, which is correct/expected.
         Log.d(TAG, "installApp: $packageName is new — opening Play Store")
-        val tunnelEndMs = System.currentTimeMillis() + 90_000L
         try {
-            val engine = SkiePolicyEngine(context)
-            dpm.setPackagesSuspended(componentName, arrayOf(SkiePolicyEngine.PLAY_STORE_PKG), false)
             val installIntent = Intent(Intent.ACTION_VIEW)
             installIntent.data = android.net.Uri.parse("market://details?id=$packageName")
-            installIntent.setPackage(SkiePolicyEngine.PLAY_STORE_PKG)
+            installIntent.setPackage("com.android.vending")
             installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(installIntent)
-            engine.unsuspendPlayStoreTemporarily(90_000L)
-            database.getReference("devices/$deviceId/playStoreTunnel").setValue(true)
-            database.getReference("devices/$deviceId/playStoreTunnelEndsAt").setValue(tunnelEndMs)
             writeInstallResult(packageName, true, "play_store_opened")
             Log.d(TAG, "installApp: Play Store opened for $packageName")
         } catch (e: Exception) {
@@ -350,7 +317,6 @@ class SkieCommandManager(private val context: Context) {
             writeInstallResult(packageName, false, e.message)
         }
 
-        database.getReference("devices/$deviceId/playStoreTunnel").setValue(true)
         database.getReference("devices/$deviceId/command").removeValue()
     }
 
@@ -459,7 +425,6 @@ class SkieCommandManager(private val context: Context) {
             "disallow_user_switch",
             "disallow_config_mobile_networks",
             "screen_capture_disabled",
-            "suspend_play_store",
             "block_uninstall_skie"
         )
         val hardenLogRef = database.getReference("devices/$deviceId/hardenLog")

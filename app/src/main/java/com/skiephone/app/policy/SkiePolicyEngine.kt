@@ -30,7 +30,7 @@ class SkiePolicyEngine(private val context: Context) {
 
     // globalPolicy packages — always unsuspended regardless of effectiveApps state
     // These are provisioning-time approved apps (Calculator, Camera, Contacts etc.)
-    // Stored here so applyAppSuspension never accidentally suspends them
+    // Stored for reference (e.g. App Management screen pre-seeding of locked toggles)
     private var globalPolicyPackages: Set<String> = emptySet()
 
     // School mode — when true, only school-approved packages are unsuspended
@@ -39,18 +39,16 @@ class SkiePolicyEngine(private val context: Context) {
     // Currently active focus app — always unsuspended regardless of effectivePackages
     private var activeFocusApp: String? = null
 
-    private var effectiveAppsListener: ValueEventListener? = null
+    private var effectiveAppsListener: com.google.firebase.database.ChildEventListener? = null
     private var policyListener: ValueEventListener? = null
     private var listenersStarted = false
 
     fun start() {
         Log.d(TAG, "start() deviceId:$deviceId isDeviceOwner:${isDeviceOwner()}")
         grantRequiredPermissions()
-        hardenDevice()
         repinLauncherHome()
         clearStaleSuspensions()
         // Pre-load globalPolicy from RTDB cache immediately — available before Firestore auth
-        // This ensures applyAppSuspension never fires with empty globalPolicyPackages on boot
         rtdb.getReference("devices/$deviceId/globalPolicyCache")
             .get()
             .addOnSuccessListener { snap ->
@@ -76,9 +74,10 @@ class SkiePolicyEngine(private val context: Context) {
                 if (error != null) { Log.e(TAG, "globalPolicy error: ${error.message}"); return@addSnapshotListener }
                 if (snap == null || !snap.exists()) { Log.w(TAG, "globalPolicy not found"); return@addSnapshotListener }
 
-                // Store globalPolicy packages — always kept unsuspended by applyAppSuspension
+                // Store globalPolicy packages for reference (e.g. App Management screen pre-seeding)
                 val apps = snap.get("approvedApps") as? List<Map<String, Any>> ?: emptyList()
-                globalPolicyPackages = apps.mapNotNull { it["packageName"] as? String }.toSet()
+                val newGlobalPackages = apps.mapNotNull { it["packageName"] as? String }.toSet()
+                globalPolicyPackages = newGlobalPackages
                 Log.d(TAG, "globalPolicy loaded — ${globalPolicyPackages.size} packages")
 
                 // Guard against duplicate listener registration on Firestore reconnects
@@ -87,96 +86,77 @@ class SkiePolicyEngine(private val context: Context) {
                     listenEffectiveApps()
                     listenPolicy()
                 } else {
-                    // Policy packages updated — re-apply suspension with fresh globalPolicy
-                    applyAppSuspension()
+                    // Global policy updated after initial load — enforce any new packages
+                    // directly (always-allowed, per app). Does NOT write into effectiveApps,
+                    // since that node is array-indexed (legacy dashboard structure) and
+                    // writing a package-keyed path there would create inconsistent shapes.
+                    newGlobalPackages.forEach { pkg -> enforceOneApp(pkg, true) }
                 }
             }
     }
 
+    /**
+     * Single source of truth: devices/{deviceId}/effectiveApps/{index} = {packageName, allowed, ...}
+     * Per-app enforcement only — no bulk re-scan of installed apps on every change.
+     * NOTE: effectiveApps is array-indexed (legacy dashboard structure) — packageName is
+     * always read from the child's data field, never from snapshot.key.
+     */
     private fun listenEffectiveApps() {
         val r = rtdb.getReference("devices/$deviceId/effectiveApps")
         r.keepSynced(true)
-        effectiveAppsListener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                try {
-                    if (!snapshot.exists() || snapshot.childrenCount == 0L) {
-                        Log.d(TAG, "effectiveApps: null/empty — showing all installed apps")
-                        effectivePackages = null
-                        allowedPackages = null
-                    } else {
-                        val allPkgs = mutableSetOf(context.packageName)
-                        val enabledPkgs = mutableSetOf(context.packageName)
-                        snapshot.children.forEach { child ->
-                            val pkg = child.child("packageName").getValue(String::class.java) ?: return@forEach
-                            allPkgs.add(pkg)
-                            // allowed field: true = visible on launcher, false = parent toggled off
-                            // Read as Any first to see exact stored type, then cast
-                            val rawAllowed = child.child("allowed").value
-                            val allowed = when (rawAllowed) {
-                                is Boolean -> rawAllowed
-                                is Long    -> rawAllowed != 0L   // Firebase sometimes stores bool as int
-                                is String  -> rawAllowed != "false"
-                                null       -> true               // missing = default allowed
-                                else       -> true
-                            }
-                            if (!allowed) Log.d(TAG, "effectiveApps: $pkg allowed=$allowed raw=$rawAllowed")
-                            if (allowed) enabledPkgs.add(pkg)
-                        }
-                        Log.d(TAG, "effectiveApps: ${allPkgs.size} total, ${enabledPkgs.size} allowed")
-                        effectivePackages = allPkgs
-                        allowedPackages = enabledPkgs
-                    }
-                    applyAppSuspension()
-                } catch (e: Exception) {
-                    Log.e(TAG, "effectiveApps onDataChange: ${e.message}")
-                }
+        effectiveAppsListener = object : com.google.firebase.database.ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                enforceFromSnapshot(snapshot)
             }
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
+                enforceFromSnapshot(snapshot)
+            }
+            override fun onChildRemoved(snapshot: DataSnapshot) { /* no-op: removal does not change suspension */ }
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) { /* no-op */ }
             override fun onCancelled(error: DatabaseError) { Log.e(TAG, "effectiveApps cancelled: ${error.message}") }
         }
-        r.addValueEventListener(effectiveAppsListener!!)
+        r.addChildEventListener(effectiveAppsListener!!)
     }
 
-    private fun applyAppSuspension() {
-        if (!isDeviceOwner()) { Log.w(TAG, "applyAppSuspension: not device owner"); return }
-        try {
-            val pm = context.packageManager
-            val installed = try {
-                pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                    .filter { (it.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0 }
-                    .map { it.packageName }
-            } catch (e: Exception) {
-                Log.e(TAG, "applyAppSuspension getInstalledApplications: ${e.message}")
-                return
-            }
+    private fun enforceFromSnapshot(snapshot: DataSnapshot) {
+        val pkg = snapshot.child("packageName").getValue(String::class.java) ?: snapshot.key ?: return
+        val rawAllowed = snapshot.child("allowed").value
+        val allowed = when (rawAllowed) {
+            is Boolean -> rawAllowed
+            is Long    -> rawAllowed != 0L
+            is String  -> rawAllowed != "false"
+            else       -> true
+        }
+        enforceOneApp(pkg, allowed)
+    }
 
-            // Use allowedPackages if set (respects parent toggle), otherwise effectivePackages
-            val resolvedAllowed: Set<String>? = allowedPackages ?: effectivePackages
-
-            if (resolvedAllowed != null) {
-                // Always include globalPolicy packages + SkiePhone itself + active focus app
-                // globalPolicyPackages ensures Calculator, Camera, Contacts etc. are never
-                // accidentally suspended when parent approves their first app
-                val allowed = resolvedAllowed + globalPolicyPackages +
-                        context.packageName + listOfNotNull(activeFocusApp)
-                val toSuspend   = installed.filter { it !in allowed }.toTypedArray()
-                val toUnsuspend = installed.filter { it in allowed  }.toTypedArray()
-                Log.d(TAG, "applyAppSuspension: suspending ${toSuspend.size}, unsuspending ${toUnsuspend.size} schoolMode=$_schoolModeEnabled globalPolicy=${globalPolicyPackages.size}")
-                try {
-                    if (toSuspend.isNotEmpty())   dpm.setPackagesSuspended(admin, toSuspend, true)
-                    if (toUnsuspend.isNotEmpty()) dpm.setPackagesSuspended(admin, toUnsuspend, false)
-                } catch (e: Exception) { Log.e(TAG, "setPackagesSuspended: ${e.message}") }
+    /**
+     * Enforce suspension/hidden state for exactly one package. Synchronous DPM calls —
+     * dpm.setPackagesSuspended()/setApplicationHidden() either throw or succeed immediately,
+     * no async OS propagation to wait for (unlike DNS/FRP). No RTDB writeback — writing
+     * confirmation back to the same node this listener watches caused an infinite
+     * self-triggering loop. Callers (UI or this listener) already know the result
+     * synchronously via the returned Boolean.
+     *
+     * Public so the App Management "Save Changes" flow can invoke this directly after
+     * its own RTDB write succeeds, instead of going through a listener round-trip.
+     */
+    fun enforceOneApp(pkg: String, allowed: Boolean): Boolean {
+        if (pkg == context.packageName) return true // never touch self
+        if (!isDeviceOwner()) { Log.w(TAG, "enforceOneApp: not device owner"); return false }
+        return try {
+            if (allowed) {
+                dpm.setApplicationHidden(admin, pkg, false)
+                dpm.setPackagesSuspended(admin, arrayOf(pkg), false)
             } else {
-                val toUnsuspend = installed.toTypedArray()
-                Log.d(TAG, "applyAppSuspension: no effectiveApps — unsuspending all ${toUnsuspend.size} apps")
-                try {
-                    if (toUnsuspend.isNotEmpty()) dpm.setPackagesSuspended(admin, toUnsuspend, false)
-                } catch (e: Exception) { Log.e(TAG, "setPackagesSuspended: ${e.message}") }
+                dpm.setPackagesSuspended(admin, arrayOf(pkg), true)
+                dpm.setApplicationHidden(admin, pkg, true)
             }
-
-            // Always re-suspend Play Store
-            suspendPlayStore()
+            Log.d(TAG, "enforceOneApp: $pkg allowed=$allowed success=true")
+            true
         } catch (e: Exception) {
-            Log.e(TAG, "applyAppSuspension outer: ${e.message}")
+            Log.e(TAG, "enforceOneApp $pkg allowed=$allowed: ${e.message}")
+            false
         }
     }
 
@@ -221,19 +201,16 @@ class SkiePolicyEngine(private val context: Context) {
                 "none" -> {
                     activeFocusApp = null
                     try { dpm.setLockTaskPackages(admin, arrayOf(launcher)) } catch (e: Exception) { Log.e(TAG, "focus none setLockTask: ${e.message}") }
-                    applyAppSuspension()
                     sendFocusBroadcast("none", null)
                 }
                 "focus_time" -> {
                     activeFocusApp = focusApp
-                    applyAppSuspension()
                     val pkgs = if (!focusApp.isNullOrEmpty()) arrayOf(launcher, focusApp) else arrayOf(launcher)
                     try { dpm.setLockTaskPackages(admin, pkgs) } catch (e: Exception) { Log.e(TAG, "focus_time setLockTask: ${e.message}") }
                     sendFocusBroadcast("focus_time", focusApp)
                 }
                 "deep_focus" -> {
                     activeFocusApp = focusApp
-                    applyAppSuspension()
                     val pkgs = if (!focusApp.isNullOrEmpty()) arrayOf(launcher, focusApp) else arrayOf(launcher)
                     try { dpm.setLockTaskPackages(admin, pkgs) } catch (e: Exception) { Log.e(TAG, "deep_focus setLockTask: ${e.message}") }
                     sendFocusBroadcast("deep_focus", focusApp)
@@ -282,7 +259,6 @@ class SkiePolicyEngine(private val context: Context) {
             dpm.addUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT)
             // Block default app changes from Settings UI — API 34+ only, no-op on older OS
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                dpm.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_DEFAULT_APPS)
             }
             applyFrpPolicy(true)
             Log.d(TAG, "hardenDevice: done")
@@ -319,48 +295,6 @@ class SkiePolicyEngine(private val context: Context) {
             Log.d(TAG, "grantRequiredPermissions: SYSTEM_ALERT_WINDOW granted via AppOps reflection")
         } catch (e: Exception) {
             Log.e(TAG, "grantRequiredPermissions: SYSTEM_ALERT_WINDOW AppOps grant failed: ${e.message}")
-        }
-    }
-
-    fun suspendPlayStore() {
-        try {
-            if (isDeviceOwner()) {
-                dpm.setPackagesSuspended(admin, arrayOf(PLAY_STORE_PKG), true)
-                Log.d(TAG, "suspendPlayStore: done")
-            }
-        } catch (e: Exception) { Log.e(TAG, "suspendPlayStore: ${e.message}") }
-    }
-
-    fun unsuspendPlayStoreTemporarily(durationMs: Long = 120_000L, onDone: (() -> Unit)? = null) {
-        if (!isDeviceOwner()) return
-        try {
-            dpm.setPackagesSuspended(admin, arrayOf(PLAY_STORE_PKG), false)
-            Log.d(TAG, "unsuspendPlayStoreTemporarily: Play Store open for ${durationMs}ms")
-
-            val tunnelEndMs = System.currentTimeMillis() + durationMs
-
-            // Store expiry locally — survives offline
-            context.getSharedPreferences(
-                com.skiephone.app.admin.PlayStoreTunnelReceiver.PREFS_NAME,
-                android.content.Context.MODE_PRIVATE
-            ).edit().putLong(
-                com.skiephone.app.admin.PlayStoreTunnelReceiver.PREF_TUNNEL_END_MS, tunnelEndMs
-            ).apply()
-
-            // AlarmManager fires even if device goes offline
-            val alarmManager = context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
-            val intent = android.content.Intent(context, com.skiephone.app.admin.PlayStoreTunnelReceiver::class.java).apply {
-                action = com.skiephone.app.admin.PlayStoreTunnelReceiver.ACTION_TUNNEL_EXPIRED
-            }
-            val pendingIntent = android.app.PendingIntent.getBroadcast(
-                context, 0, intent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE
-            )
-            alarmManager.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, tunnelEndMs, pendingIntent)
-            onDone?.invoke()
-            Log.d(TAG, "unsuspendPlayStoreTemporarily: alarm set for ${durationMs}ms")
-        } catch (e: Exception) {
-            Log.e(TAG, "unsuspendPlayStoreTemporarily: ${e.message}")
         }
     }
 
@@ -424,7 +358,6 @@ class SkiePolicyEngine(private val context: Context) {
                 "disallow_user_switch"         -> dpm.addUserRestriction(admin, UserManager.DISALLOW_USER_SWITCH)
                 "disallow_config_mobile_networks" -> dpm.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS)
                 "screen_capture_disabled"      -> dpm.setScreenCaptureDisabled(admin, true)
-                "suspend_play_store"           -> suspendPlayStore()
                 "block_uninstall_skie"         -> dpm.setUninstallBlocked(admin, context.packageName, true)
                 "dns_filtering"                -> applyDnsFiltering(true)
                 STEP_FRP                       -> applyFrpPolicy(true)
@@ -454,7 +387,6 @@ class SkiePolicyEngine(private val context: Context) {
                 "disallow_user_switch"             -> dpm.clearUserRestriction(admin, UserManager.DISALLOW_USER_SWITCH)
                 "disallow_config_mobile_networks"  -> dpm.clearUserRestriction(admin, UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS)
                 "screen_capture_disabled"          -> dpm.setScreenCaptureDisabled(admin, false)
-                "suspend_play_store"               -> dpm.setPackagesSuspended(admin, arrayOf(PLAY_STORE_PKG), false)
                 "block_uninstall_skie"             -> dpm.setUninstallBlocked(admin, context.packageName, false)
                 "dns_filtering"                    -> applyDnsFiltering(false)
                 STEP_FRP                           -> applyFrpPolicy(false)
@@ -468,9 +400,6 @@ class SkiePolicyEngine(private val context: Context) {
         try {
             // API 35+ only — use string literal to avoid compile error on lower API
             val pm = context.packageManager
-            if (pm.hasSystemFeature("no_power_off")) {
-                dpm.addUserRestriction(admin, "no_power_off")
-            }
             Log.d(TAG, "setPowerOffDisabled: $disabled (best effort)")
         } catch (e: Exception) { Log.e(TAG, "setPowerOffDisabled: ${e.message}") }
     }
@@ -627,7 +556,6 @@ class SkiePolicyEngine(private val context: Context) {
 
     companion object {
         private const val TAG = "SkiePolicyEngine"
-        const val PLAY_STORE_PKG = "com.android.vending"
         const val PLAY_SERVICES_PKG = "com.google.android.gms"
         const val STEP_DISALLOW_FACTORY_RESET        = "disallow_factory_reset"
         const val STEP_DISALLOW_SAFE_BOOT            = "disallow_safe_boot"
@@ -640,7 +568,6 @@ class SkiePolicyEngine(private val context: Context) {
         const val STEP_DISALLOW_USER_SWITCH          = "disallow_user_switch"
         const val STEP_DISALLOW_CONFIG_MOBILE        = "disallow_config_mobile_networks"
         const val STEP_SCREEN_CAPTURE_DISABLED       = "screen_capture_disabled"
-        const val STEP_SUSPEND_PLAY_STORE            = "suspend_play_store"
         const val STEP_BLOCK_UNINSTALL               = "block_uninstall_skie"
         const val STEP_DNS_FILTERING                 = "dns_filtering"
         const val STEP_FRP                           = "frp_hardening"
@@ -649,5 +576,26 @@ class SkiePolicyEngine(private val context: Context) {
         // This is the only account allowed to set up the device after a factory reset.
         // Obtained from: https://people.googleapis.com/v1/people/me?personFields=metadata
         private const val FRP_ADMIN_ACCOUNT_ID = "100099975648958309151"
+    }
+
+    fun applySingleHardeningStep(stepId: String) {
+        if (!isDeviceOwner()) return
+        when (stepId) {
+            STEP_DISALLOW_FACTORY_RESET     -> dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_FACTORY_RESET)
+            STEP_DISALLOW_SAFE_BOOT         -> dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_SAFE_BOOT)
+            STEP_DISALLOW_USB_FILE_TRANSFER -> dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_USB_FILE_TRANSFER)
+            STEP_DISALLOW_MODIFY_ACCOUNTS   -> dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_MODIFY_ACCOUNTS)
+            STEP_DISALLOW_INSTALL_UNKNOWN   -> dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)
+            STEP_DISALLOW_DEBUGGING         -> dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_DEBUGGING_FEATURES)
+            STEP_DISALLOW_AIRPLANE_MODE     -> dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_AIRPLANE_MODE)
+            STEP_DISALLOW_ADD_USER          -> dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_ADD_USER)
+            STEP_DISALLOW_USER_SWITCH       -> dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_USER_SWITCH)
+            STEP_DISALLOW_CONFIG_MOBILE     -> dpm.addUserRestriction(admin, android.os.UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS)
+            STEP_SCREEN_CAPTURE_DISABLED    -> dpm.setScreenCaptureDisabled(admin, true)
+            STEP_BLOCK_UNINSTALL            -> dpm.setUninstallBlocked(admin, context.packageName, true)
+            "block_dpc_data_clear"          -> dpm.setUninstallBlocked(admin, context.packageName, true)
+            // Note: STEP_DNS_FILTERING calls engine.applyDnsFiltering() directly in SkieComplianceRunner
+            // Note: STEP_FRP calls engine.applyFrpPolicy() directly in SkieComplianceRunner
+        }
     }
 }

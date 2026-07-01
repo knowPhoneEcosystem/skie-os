@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -18,12 +17,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.firebase.database.FirebaseDatabase
+import com.skiephone.app.ui.theme.SkieBadge
+import com.skiephone.app.ui.theme.SkieCard
+import com.skiephone.app.ui.theme.SkieColors
+import com.skiephone.app.ui.theme.SkieTopBar
 import com.skiephone.app.util.SkieLoader
 
 /**
  * Child-facing screen. No PIN required.
  * Shows Skie branding, current app version, and update+restart actions.
- * "Admin Portal" button routes to PIN entry.
+ * "Admin Portal" entry routes to PIN entry — kept as a quiet icon action in
+ * the top bar rather than a prominent button, since this screen belongs to
+ * the child, not the parent.
  */
 @Composable
 fun SkieChildScreen(
@@ -58,128 +63,120 @@ fun SkieChildScreen(
             latestVersionCode != null &&
             latestVersionCode!! > currentVersionCode
 
-    Box(
-        modifier = rootModifier
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF0A0A0F), Color(0xFF0D1117))
-                )
+    Box(modifier = rootModifier.background(SkieColors.White)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SkieTopBar(
+                title = "Skiephone",
+                trailing = {
+                    IconButton(onClick = onAdminPortalClick) {
+                        Text("⚙", fontSize = 20.sp, color = SkieColors.Grey)
+                    }
+                }
             )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Top spacer
-            Spacer(modifier = Modifier.height(60.dp))
 
-            // Branding
             Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = "SkieOS",
-                    fontSize = 48.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    letterSpacing = (-1).sp
-                )
-                Text(
-                    text = "Managed Device",
-                    fontSize = 16.sp,
-                    color = Color(0xFF8E8E93),
-                    fontWeight = FontWeight.Normal
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "v$currentVersionName",
-                    fontSize = 13.sp,
-                    color = Color(0xFF636366),
-                )
+                Spacer(modifier = Modifier.height(40.dp))
 
-                if (updateAvailable) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Surface(
-                        color = Color(0xFF1C1C1E),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(
-                            text = "Update available (v${latestVersionCode})",
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            fontSize = 12.sp,
-                            color = Color(0xFFFF9F0A)
-                        )
-                    }
-                }
-            }
-
-            // Action buttons
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                if (updateAvailable && latestApkUrl != null) {
-                    Button(
-                        onClick = {
-                            val url = latestApkUrl ?: return@Button
-                            loading = true
-                            loadingMessage = "Downloading update…"
-                            // Trigger OTA via SkieUpdateManager — open URL in browser as fallback
-                            val intent = Intent(Intent.ACTION_VIEW,
-                                android.net.Uri.parse(url)).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            context.startActivity(intent)
-                            loading = false
-                        },
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFFF9F0A)
-                        )
-                    ) {
-                        Text("Update SkieOS", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                            color = Color.Black)
-                    }
-                }
-
-                Button(
-                    onClick = {
-                        loading = true
-                        loadingMessage = "Restarting device…"
-                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                            try {
-                                val intent = Intent(context,
-                                    com.skiephone.app.services.SkieRestartService::class.java)
-                                context.startForegroundService(intent)
-                            } catch (e: Exception) {
-                                loading = false
-                            }
-                        }, 500)
-                    },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1E))
+                // Status card — calm, reassuring, Screen-Time style
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("Restart Device", fontSize = 16.sp, fontWeight = FontWeight.Medium,
-                        color = Color.White)
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(SkieColors.SkyTint, shape = androidx.compose.foundation.shape.CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("🛡", fontSize = 32.sp)
+                    }
+                    Text(
+                        text = "This device is managed",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SkieColors.DeepNavy,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "Skiephone keeps this device safe and on track.",
+                        fontSize = 14.sp,
+                        color = SkieColors.Grey,
+                        textAlign = TextAlign.Center
+                    )
+
+                    if (updateAvailable) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        SkieBadge(
+                            text = "Update available — v$latestVersionCode",
+                            color = SkieColors.SkyBlue,
+                            backgroundColor = SkieColors.SkyTint
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                TextButton(
-                    onClick = onAdminPortalClick,
+                // Action buttons
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
+                    if (updateAvailable && latestApkUrl != null) {
+                        Button(
+                            onClick = {
+                                val url = latestApkUrl ?: return@Button
+                                loading = true
+                                loadingMessage = "Downloading update…"
+                                val intent = Intent(Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(url)).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                                loading = false
+                            },
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = SkieColors.SkyBlue)
+                        ) {
+                            Text("Update Skiephone", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                                color = Color.White)
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            loading = true
+                            loadingMessage = "Restarting device…"
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                try {
+                                    val intent = Intent(context,
+                                        com.skiephone.app.services.SkieRestartService::class.java)
+                                    context.startForegroundService(intent)
+                                } catch (e: Exception) {
+                                    loading = false
+                                }
+                            }, 500)
+                        },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SkieColors.SkyTint)
+                    ) {
+                        Text("Restart Device", fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                            color = SkieColors.DeepNavy)
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
                     Text(
-                        text = "Admin Portal",
-                        fontSize = 14.sp,
-                        color = Color(0xFF636366),
-                        textAlign = TextAlign.Center
+                        text = "v$currentVersionName",
+                        fontSize = 12.sp,
+                        color = SkieColors.Grey,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }

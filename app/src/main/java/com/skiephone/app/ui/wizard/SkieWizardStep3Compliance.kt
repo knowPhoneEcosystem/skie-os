@@ -21,6 +21,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.skiephone.app.compliance.*
 import com.skiephone.app.policy.SkiePolicyEngine
+import com.skiephone.app.ui.theme.SkieCard
+import com.skiephone.app.ui.theme.SkieColors
+import com.skiephone.app.ui.theme.SkieStepProgress
+import com.skiephone.app.ui.theme.SkieTopBar
 import com.skiephone.app.util.SkieLoader
 
 @Composable
@@ -119,36 +123,39 @@ fun SkieWizardStep3Compliance(
         substep = 6
     }
 
-    Box(modifier = rootModifier.background(Color(0xFF0A0A0F))) {
-        Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(Modifier.height(16.dp))
-            Text("Device Compliance", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Text("3-layer security audit", fontSize = 14.sp, color = Color(0xFF8E8E93))
-            Spacer(Modifier.height(32.dp))
+    Box(modifier = rootModifier.background(SkieColors.White)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SkieTopBar(title = "Setup")
+            SkieStepProgress(totalSteps = 4, currentStep = 3)
+            Column(
+                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+            Spacer(Modifier.height(8.dp))
+            Text("Device Compliance", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = SkieColors.DeepNavy)
+            Text("3-layer security audit", fontSize = 14.sp, color = SkieColors.Grey)
+            Spacer(Modifier.height(28.dp))
 
             when {
                 // ── Idle ──────────────────────────────────────────────────────────
                 substep == 0 -> {
-                    SubstepCard("1", "Policy Application", "Applies all hardening steps.", Color(0xFF0A84FF))
+                    SubstepCard("1", "Policy Application", "Applies all hardening steps.", SkieColors.SkyBlue)
                     Spacer(Modifier.height(8.dp))
-                    SubstepCard("2", "Effective State Verification", "Checks if Android enforced each step.", Color(0xFF30D158))
+                    SubstepCard("2", "Effective State Verification", "Checks if Android enforced each step.", SkieColors.Success)
                     Spacer(Modifier.height(8.dp))
-                    SubstepCard("3", "Attack Simulation", "Attempts to bypass each hardening step.", Color(0xFFFF9F0A))
+                    SubstepCard("3", "Attack Simulation", "Attempts to bypass each hardening step.", SkieColors.Warning)
                     Spacer(Modifier.height(8.dp))
                     SubstepCard("4", "Manual Verification",
                         "${SkieComplianceVerifier.MANUAL_STEPS.size} step${if (SkieComplianceVerifier.MANUAL_STEPS.size != 1) "s" else ""} require physical device testing.",
-                        Color(0xFFBF5AF2))
+                        SkieColors.Coral)
                     Spacer(Modifier.height(24.dp))
                     Button(onClick = { runLayer1() },
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF))
+                        colors = ButtonDefaults.buttonColors(containerColor = SkieColors.SkyBlue)
                     ) { Text("Secure and Comply", fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
                     Spacer(Modifier.height(16.dp))
-                    Text("Or run individual steps:", fontSize = 12.sp, color = Color(0xFF636366))
+                    Text("Or run individual steps:", fontSize = 12.sp, color = SkieColors.Grey)
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()) {
@@ -156,19 +163,19 @@ fun SkieWizardStep3Compliance(
                             onClick = { layer1Results = emptyList(); layer2Results = emptyList(); layer3Results = emptyList(); report = null; manualConfirmations = emptyMap(); substep = 1; runLayer1() },
                             modifier = Modifier.weight(1f).height(44.dp),
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0A84FF))
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.SkyBlue)
                         ) { Text("Harden", fontSize = 13.sp) }
                         OutlinedButton(
                             onClick = { layer2Results = emptyList(); layer3Results = emptyList(); report = null; manualConfirmations = emptyMap(); substep = 2; runLayer2() },
                             modifier = Modifier.weight(1f).height(44.dp),
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF30D158))
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.Success)
                         ) { Text("Verify", fontSize = 13.sp) }
                         OutlinedButton(
                             onClick = { layer3Results = emptyList(); report = null; manualConfirmations = emptyMap(); substep = 3; runLayer3() },
                             modifier = Modifier.weight(1f).height(44.dp),
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF9F0A))
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.Warning)
                         ) { Text("Simulate", fontSize = 13.sp) }
                     }
                 }
@@ -181,18 +188,18 @@ fun SkieWizardStep3Compliance(
                         3 -> "Layer 3: Simulating attacks…"
                         else -> ""
                     }
-                    Text(layerLabel, fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                    Text(layerLabel, fontSize = 16.sp, color = SkieColors.Ink, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(24.dp))
                     LinearProgressIndicator(
                         progress = { animatedProgress },
                         modifier = Modifier.fillMaxWidth().height(6.dp),
-                        color = Color(0xFF0A84FF), trackColor = Color(0xFF2C2C2E)
+                        color = SkieColors.SkyBlue, trackColor = SkieColors.Line
                     )
                     Spacer(Modifier.height(16.dp))
-                    Text(progressLabel, fontSize = 13.sp, color = Color(0xFF8E8E93), textAlign = TextAlign.Center)
+                    Text(progressLabel, fontSize = 13.sp, color = SkieColors.Grey, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(12.dp))
                     Text("Do not press back or close the screen until complete.",
-                        fontSize = 12.sp, color = Color(0xFFFF453A), textAlign = TextAlign.Center)
+                        fontSize = 12.sp, color = SkieColors.Danger, textAlign = TextAlign.Center)
                 }
 
                 // ── Manual verification ───────────────────────────────────────────
@@ -205,16 +212,16 @@ fun SkieWizardStep3Compliance(
                     }
                     if (autoFailed.isNotEmpty()) {
                         Text("Automated Issues", fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFFF453A))
+                            color = SkieColors.Danger)
                         Spacer(Modifier.height(8.dp))
                         autoFailed.forEach { fs ->
-                            Surface(color = Color(0xFF2C1414), shape = RoundedCornerShape(10.dp),
+                            Surface(color = SkieColors.DangerBg, shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                                 Column(Modifier.padding(12.dp)) {
-                                    Text(fs.label, color = Color.White, fontWeight = FontWeight.Medium,
+                                    Text(fs.label, color = SkieColors.Ink, fontWeight = FontWeight.Medium,
                                         fontSize = 14.sp)
                                     Text("Failed: ${fs.failedLayers.joinToString(", ")}",
-                                        color = Color(0xFFFF453A), fontSize = 12.sp)
+                                        color = SkieColors.Danger, fontSize = 12.sp)
                                 }
                             }
                         }
@@ -222,15 +229,15 @@ fun SkieWizardStep3Compliance(
                     }
 
                     // Manual verification section
-                    Surface(color = Color(0xFF1C1C2E), shape = RoundedCornerShape(12.dp),
+                    Surface(color = SkieColors.SkyTint, shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp)) {
                             Text("⚠ Manual Verification Required", fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold, color = Color(0xFFBF5AF2))
+                                fontWeight = FontWeight.Bold, color = SkieColors.Coral)
                             Spacer(Modifier.height(6.dp))
                             Text("${r.manualSteps.size} step${if (r.manualSteps.size != 1) "s" else ""} cannot be auto-tested and require physical verification on the device. " +
                                     "Complete each test and mark pass or fail. Your score updates in real time.",
-                                fontSize = 13.sp, color = Color(0xFF8E8E93), lineHeight = 18.sp)
+                                fontSize = 13.sp, color = SkieColors.Grey, lineHeight = 18.sp)
                         }
                     }
                     Spacer(Modifier.height(16.dp))
@@ -255,19 +262,19 @@ fun SkieWizardStep3Compliance(
                     // Live score preview
                     Spacer(Modifier.height(8.dp))
                     val scoreColor = when {
-                        r.score >= 80 -> Color(0xFF30D158)
-                        r.score >= 50 -> Color(0xFFFF9F0A)
-                        else -> Color(0xFFFF453A)
+                        r.score >= 80 -> SkieColors.Success
+                        r.score >= 50 -> SkieColors.Warning
+                        else -> SkieColors.Danger
                     }
-                    Surface(color = Color(0xFF1C1C1E), shape = RoundedCornerShape(12.dp),
+                    Surface(color = SkieColors.White, shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Current Score", color = Color(0xFF8E8E93), fontSize = 14.sp)
+                            Text("Current Score", color = SkieColors.Grey, fontSize = 14.sp)
                             Row(verticalAlignment = Alignment.Bottom) {
                                 Text("${r.score}", fontSize = 36.sp, fontWeight = FontWeight.Bold,
                                     color = scoreColor)
-                                Text("/100", fontSize = 14.sp, color = Color(0xFF636366),
+                                Text("/100", fontSize = 14.sp, color = SkieColors.Grey,
                                     modifier = Modifier.padding(bottom = 4.dp))
                             }
                         }
@@ -275,7 +282,7 @@ fun SkieWizardStep3Compliance(
                     if (pendingManualCount > 0) {
                         Spacer(Modifier.height(4.dp))
                         Text("$pendingManualCount manual test(s) still pending",
-                            fontSize = 12.sp, color = Color(0xFFFF9F0A), textAlign = TextAlign.Center)
+                            fontSize = 12.sp, color = SkieColors.Warning, textAlign = TextAlign.Center)
                     }
 
                     Spacer(Modifier.height(20.dp))
@@ -287,7 +294,7 @@ fun SkieWizardStep3Compliance(
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (allManualConfirmed) Color(0xFF0A84FF) else Color(0xFF2C2C2E)
+                            containerColor = if (allManualConfirmed) SkieColors.SkyBlue else SkieColors.Line
                         )
                     ) { Text("Continue", fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
 
@@ -298,7 +305,7 @@ fun SkieWizardStep3Compliance(
                         onClick = { showSkipWarning = true },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF636366))
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.Grey)
                     ) { Text("Skip manual testing", fontSize = 14.sp) }
                 }
 
@@ -306,28 +313,28 @@ fun SkieWizardStep3Compliance(
                 substep == 6 && report != null -> {
                     val r = report!!
                     val scoreColor = when {
-                        r.score >= 80 -> Color(0xFF30D158)
-                        r.score >= 50 -> Color(0xFFFF9F0A)
-                        else -> Color(0xFFFF453A)
+                        r.score >= 80 -> SkieColors.Success
+                        r.score >= 50 -> SkieColors.Warning
+                        else -> SkieColors.Danger
                     }
                     Text("${r.score}", fontSize = 80.sp, fontWeight = FontWeight.Bold, color = scoreColor)
-                    Text("/100", fontSize = 20.sp, color = Color(0xFF8E8E93))
+                    Text("/100", fontSize = 20.sp, color = SkieColors.Grey)
                     Text("${r.passedSteps}/${r.totalSteps} steps passed",
-                        fontSize = 14.sp, color = Color(0xFF8E8E93))
+                        fontSize = 14.sp, color = SkieColors.Grey)
                     Spacer(Modifier.height(24.dp))
 
                     if (r.failedSteps.isNotEmpty()) {
                         Text("Issues Found", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFFF453A))
+                            color = SkieColors.Danger)
                         Spacer(Modifier.height(12.dp))
                         r.failedSteps.forEach { fs ->
-                            Surface(color = Color(0xFF1C1C1E), shape = RoundedCornerShape(10.dp),
+                            Surface(color = SkieColors.White, shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                                 Column(Modifier.padding(14.dp)) {
-                                    Text(fs.label, color = Color.White, fontWeight = FontWeight.Medium,
+                                    Text(fs.label, color = SkieColors.Ink, fontWeight = FontWeight.Medium,
                                         fontSize = 14.sp)
                                     Text("Failed: ${fs.failedLayers.joinToString(", ")}",
-                                        color = Color(0xFFFF453A), fontSize = 12.sp)
+                                        color = SkieColors.Danger, fontSize = 12.sp)
                                 }
                             }
                         }
@@ -335,7 +342,7 @@ fun SkieWizardStep3Compliance(
                     }
 
                     // Independent action buttons
-                    Text("Run Independently", fontSize = 13.sp, color = Color(0xFF8E8E93))
+                    Text("Run Independently", fontSize = 13.sp, color = SkieColors.Grey)
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth()) {
@@ -348,7 +355,7 @@ fun SkieWizardStep3Compliance(
                             },
                             modifier = Modifier.weight(1f).height(44.dp),
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0A84FF))
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.SkyBlue)
                         ) { Text("Harden", fontSize = 13.sp) }
                         OutlinedButton(
                             onClick = {
@@ -358,7 +365,7 @@ fun SkieWizardStep3Compliance(
                             },
                             modifier = Modifier.weight(1f).height(44.dp),
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF30D158))
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.Success)
                         ) { Text("Verify", fontSize = 13.sp) }
                         OutlinedButton(
                             onClick = {
@@ -368,24 +375,25 @@ fun SkieWizardStep3Compliance(
                             },
                             modifier = Modifier.weight(1f).height(44.dp),
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF9F0A))
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.Warning)
                         ) { Text("Simulate", fontSize = 13.sp) }
                     }
                     Spacer(Modifier.height(8.dp))
-                    Button(onClick = { reRun() },
+                    OutlinedButton(onClick = { reRun() },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1E))
-                    ) { Text("Run Full Suite Again", fontSize = 15.sp, color = Color.White) }
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.DeepNavy)
+                    ) { Text("Run Full Suite Again", fontSize = 15.sp) }
                     Spacer(Modifier.height(12.dp))
                     Button(onClick = onComplete,
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF))
+                        colors = ButtonDefaults.buttonColors(containerColor = SkieColors.SkyBlue)
                     ) { Text("Continue", fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
                 }
             }
             Spacer(Modifier.height(32.dp))
+        }
         }
 
         // No full-screen loader during compliance — progress shown inline in substep 1..3
@@ -394,15 +402,15 @@ fun SkieWizardStep3Compliance(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF0A0A0F).copy(alpha = 0.85f))
+                    .background(SkieColors.White.copy(alpha = 0.85f))
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CircularProgressIndicator(color = Color(0xFF0A84FF),
+                    CircularProgressIndicator(color = SkieColors.SkyBlue,
                         strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-                    Text("Saving score…", color = Color.White, fontSize = 14.sp)
+                    Text("Saving score…", color = SkieColors.Ink, fontSize = 14.sp)
                 }
             }
         }
@@ -413,43 +421,43 @@ fun SkieWizardStep3Compliance(
             val pendingSteps = r?.manualSteps?.filter { it.confirmed == null } ?: emptyList()
             AlertDialog(
                 onDismissRequest = { showSkipWarning = false },
-                containerColor = Color(0xFF1C1C1E),
+                containerColor = SkieColors.White,
                 title = {
-                    Text("Skip Manual Testing?", color = Color.White, fontWeight = FontWeight.Bold,
+                    Text("Skip Manual Testing?", color = SkieColors.Ink, fontWeight = FontWeight.Bold,
                         fontSize = 18.sp)
                 },
                 text = {
                     Column {
                         Text("The following steps have NOT been manually verified:",
-                            color = Color(0xFFFF9F0A), fontSize = 14.sp)
+                            color = SkieColors.Warning, fontSize = 14.sp)
                         Spacer(Modifier.height(12.dp))
                         pendingSteps.forEach { step ->
                             val def = SkieComplianceScorer.MANUAL_STEP_DEFINITIONS[step.stepId]
-                            Surface(color = Color(0xFF2C2C2E), shape = RoundedCornerShape(8.dp),
+                            Surface(color = SkieColors.Line, shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                                 Column(Modifier.padding(12.dp)) {
-                                    Text(step.label, color = Color.White, fontWeight = FontWeight.Medium,
+                                    Text(step.label, color = SkieColors.Ink, fontWeight = FontWeight.Medium,
                                         fontSize = 13.sp)
                                     Spacer(Modifier.height(4.dp))
                                     Text("⚠ ${def?.warning ?: "This step has not been verified."}",
-                                        color = Color(0xFFFF9F0A), fontSize = 12.sp, lineHeight = 16.sp)
+                                        color = SkieColors.Warning, fontSize = 12.sp, lineHeight = 16.sp)
                                 }
                             }
                         }
                         Spacer(Modifier.height(12.dp))
                         Text("These risks may affect device security. Proceeding means you accept these untested items.",
-                            color = Color(0xFF8E8E93), fontSize = 13.sp, lineHeight = 18.sp)
+                            color = SkieColors.Grey, fontSize = 13.sp, lineHeight = 18.sp)
                     }
                 },
                 confirmButton = {
                     Button(
                         onClick = { showSkipWarning = false; finishWithScore() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF453A))
+                        colors = ButtonDefaults.buttonColors(containerColor = SkieColors.Danger)
                     ) { Text("I understand, proceed anyway", fontSize = 13.sp) }
                 },
                 dismissButton = {
                     TextButton(onClick = { showSkipWarning = false }) {
-                        Text("Go back and test", color = Color(0xFF0A84FF), fontSize = 13.sp)
+                        Text("Go back and test", color = SkieColors.SkyBlue, fontSize = 13.sp)
                     }
                 }
             )
@@ -465,34 +473,34 @@ private fun ManualStepCard(
     onFail: () -> Unit
 ) {
     val borderColor = when (confirmed) {
-        true -> Color(0xFF30D158)
-        false -> Color(0xFFFF453A)
-        null -> Color(0xFF3A3A3C)
+        true -> SkieColors.Success
+        false -> SkieColors.Danger
+        null -> SkieColors.Line
     }
     Surface(
-        color = Color(0xFF1C1C1E),
+        color = SkieColors.White,
         shape = RoundedCornerShape(12.dp),
         border = ButtonDefaults.outlinedButtonBorder,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(step.label, color = Color.White, fontWeight = FontWeight.SemiBold,
+                Text(step.label, color = SkieColors.Ink, fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp, modifier = Modifier.weight(1f))
                 when (confirmed) {
-                    true -> Text("✅ Pass", color = Color(0xFF30D158), fontSize = 13.sp,
+                    true -> Text("✅ Pass", color = SkieColors.Success, fontSize = 13.sp,
                         fontWeight = FontWeight.Medium)
-                    false -> Text("❌ Fail", color = Color(0xFFFF453A), fontSize = 13.sp,
+                    false -> Text("❌ Fail", color = SkieColors.Danger, fontSize = 13.sp,
                         fontWeight = FontWeight.Medium)
-                    null -> Text("Pending", color = Color(0xFF636366), fontSize = 13.sp)
+                    null -> Text("Pending", color = SkieColors.Grey, fontSize = 13.sp)
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Surface(color = Color(0xFF2C2C2E), shape = RoundedCornerShape(8.dp)) {
+            Surface(color = SkieColors.SkyTint, shape = RoundedCornerShape(8.dp)) {
                 Text(
                     text = "🔍 How to test: ${step.instructions}",
                     modifier = Modifier.padding(12.dp),
-                    color = Color(0xFFAAAAAA), fontSize = 12.sp, lineHeight = 17.sp
+                    color = SkieColors.Grey, fontSize = 12.sp, lineHeight = 17.sp
                 )
             }
             Spacer(Modifier.height(12.dp))
@@ -502,18 +510,19 @@ private fun ManualStepCard(
                     modifier = Modifier.weight(1f).height(40.dp),
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (confirmed == true) Color(0xFF30D158) else Color(0xFF2C2C2E)
+                        containerColor = if (confirmed == true) SkieColors.Success else SkieColors.Line
                     )
                 ) { Text("✅ Pass", fontSize = 13.sp,
-                    color = if (confirmed == true) Color.Black else Color.White) }
+                    color = if (confirmed == true) Color.White else SkieColors.Ink) }
                 Button(
                     onClick = onFail,
                     modifier = Modifier.weight(1f).height(40.dp),
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (confirmed == false) Color(0xFFFF453A) else Color(0xFF2C2C2E)
+                        containerColor = if (confirmed == false) SkieColors.Danger else SkieColors.Line
                     )
-                ) { Text("❌ Fail", fontSize = 13.sp, color = Color.White) }
+                ) { Text("❌ Fail", fontSize = 13.sp,
+                    color = if (confirmed == false) Color.White else SkieColors.Ink) }
             }
         }
     }
@@ -521,7 +530,7 @@ private fun ManualStepCard(
 
 @Composable
 private fun SubstepCard(number: String, title: String, desc: String, color: Color) {
-    Surface(color = Color(0xFF1C1C1E), shape = RoundedCornerShape(12.dp),
+    Surface(color = SkieColors.White, shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(color = color.copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp),
@@ -532,8 +541,8 @@ private fun SubstepCard(number: String, title: String, desc: String, color: Colo
             }
             Spacer(Modifier.width(14.dp))
             Column {
-                Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Text(desc, color = Color(0xFF8E8E93), fontSize = 12.sp, lineHeight = 16.sp)
+                Text(title, color = SkieColors.Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(desc, color = SkieColors.Grey, fontSize = 12.sp, lineHeight = 16.sp)
             }
         }
     }

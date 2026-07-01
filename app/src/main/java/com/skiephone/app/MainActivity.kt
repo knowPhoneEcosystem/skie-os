@@ -18,6 +18,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.skiephone.app.auth.SkieAuthManager
 import com.skiephone.app.services.SkiePolicyService
 import com.skiephone.app.ui.*
+import com.skiephone.app.ui.theme.SkieBottomNav
+import com.skiephone.app.ui.theme.SkieNavTab
 import com.skiephone.app.ui.wizard.*
 import com.skiephone.app.util.SkiePrefManager
 
@@ -123,9 +125,45 @@ private fun SkieApp(versionName: String, versionCode: Int) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // Maps the existing Screen enum to a bottom-nav tab for the 4 screens that
+    // belong to the persistent admin tab bar. Screens outside this set (auth,
+    // wizard, offboarding) render without the bottom nav, since tab navigation
+    // doesn't make sense mid-flow for those.
+    val tabScreens = remember {
+        mapOf(
+            Screen.ADMIN_HOME to SkieNavTab.HOME,
+            Screen.STEP_4 to SkieNavTab.APPS,
+            Screen.STEP_3 to SkieNavTab.COMPLIANCE,
+            Screen.ADMIN_SETTINGS to SkieNavTab.SETTINGS
+        )
+    }
+    fun onTabSelect(tab: SkieNavTab) {
+        screen = when (tab) {
+            SkieNavTab.HOME -> Screen.ADMIN_HOME
+            SkieNavTab.APPS -> Screen.STEP_4
+            SkieNavTab.COMPLIANCE -> Screen.STEP_3
+            SkieNavTab.SETTINGS -> Screen.ADMIN_SETTINGS
+        }
+    }
+
+    // Wrap any tab screen's content with the persistent bottom nav beneath it.
+    @Composable
+    fun WithBottomNavIfTab(content: @Composable () -> Unit) {
+        val currentTab = tabScreens[screen]
+        if (currentTab != null) {
+            androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxSize()) {
+                androidx.compose.foundation.layout.Box(modifier = Modifier.weight(1f)) { content() }
+                SkieBottomNav(current = currentTab, onSelect = { onTabSelect(it) })
+            }
+        } else {
+            content()
+        }
+    }
+
     // Wrap every screen in root modifier via a simple Box-less approach —
     // each screen receives the modifier as a parameter or applies it internally.
     // We handle it here by passing a callback that each screen calls on its root Box.
+    WithBottomNavIfTab {
     when (screen) {
         Screen.CHILD -> SkieChildScreen(
             currentVersionName = versionName,
@@ -236,5 +274,6 @@ private fun SkieApp(versionName: String, versionCode: Int) {
             rootModifier = rootModifier,
             onComplete = { screen = Screen.ADMIN_HOME }
         )
+    }
     }
 }

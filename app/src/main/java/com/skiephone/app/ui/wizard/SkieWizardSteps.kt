@@ -15,7 +15,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -24,6 +23,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.zxing.integration.android.IntentIntegrator
 import com.skiephone.app.admin.SkieDeviceAdminReceiver
+import com.skiephone.app.ui.theme.SkieCard
+import com.skiephone.app.ui.theme.SkieColors
+import com.skiephone.app.ui.theme.SkieStepProgress
+import com.skiephone.app.ui.theme.SkieTopBar
 import com.skiephone.app.util.SkieLoader
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -36,47 +39,48 @@ fun SkieWizardStep1Dashboard(
     onNext: () -> Unit,
     onSkip: () -> Unit
 ) {
-    Box(
-        modifier = rootModifier
-            .background(Color(0xFF0A0A0F))
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text("Connect to Dashboard", fontSize = 26.sp, fontWeight = FontWeight.Bold,
-                color = Color.White)
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                "Scan the QR code on the Skie parent dashboard to link this device to your account.\nYou can do this later from the home screen.",
-                fontSize = 14.sp, color = Color(0xFF8E8E93), textAlign = TextAlign.Center,
-                lineHeight = 20.sp
-            )
-            Spacer(modifier = Modifier.height(40.dp))
-
-            // QR Scan — uses ZXing (already in dependencies)
-            val context = LocalContext.current
-            Button(
-                onClick = {
-                    // ZXing scan activity is started from Activity context
-                    // The result is handled in MainActivity via onActivityResult
-                    // For wizard we use a dedicated scan trigger
-                    val intent = Intent("com.skiephone.app.action.SCAN_QR")
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    try { context.startActivity(intent) } catch (e: Exception) { /* fallback */ }
-                },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF))
+    Box(modifier = rootModifier.background(SkieColors.White)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SkieTopBar(title = "Setup")
+            SkieStepProgress(totalSteps = 4, currentStep = 1)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Text("Scan QR Code", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            TextButton(onClick = onSkip) {
-                Text("Skip for now", fontSize = 14.sp, color = Color(0xFF636366))
+                Text("Connect to Dashboard", fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                    color = SkieColors.DeepNavy)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "Scan the QR code on the Skie parent dashboard to link this device to your account.\nYou can do this later from the home screen.",
+                    fontSize = 14.sp, color = SkieColors.Grey, textAlign = TextAlign.Center,
+                    lineHeight = 20.sp
+                )
+                Spacer(modifier = Modifier.height(36.dp))
+
+                // QR Scan — uses ZXing (already in dependencies)
+                val context = LocalContext.current
+                Button(
+                    onClick = {
+                        // ZXing scan activity is started from Activity context
+                        // The result is handled in MainActivity via onActivityResult
+                        // For wizard we use a dedicated scan trigger
+                        val intent = Intent("com.skiephone.app.action.SCAN_QR")
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        try { context.startActivity(intent) } catch (e: Exception) { /* fallback */ }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = SkieColors.SkyBlue)
+                ) {
+                    Text("Scan QR Code", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                TextButton(onClick = onSkip) {
+                    Text("Skip for now", fontSize = 14.sp, color = SkieColors.Grey)
+                }
             }
         }
     }
@@ -104,84 +108,81 @@ fun SkieWizardStep2GoogleAccount(
 
     LaunchedEffect(Unit) { checkGoogleAccount() }
 
-    Box(
-        modifier = rootModifier
-            .background(Color(0xFF0A0A0F))
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text("Add Google Account", fontSize = 26.sp, fontWeight = FontWeight.Bold,
-                color = Color.White)
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                "A Google account must be added now. After hardening, adding new accounts will be blocked for security.\n\nLog in to the account and return here.",
-                fontSize = 14.sp, color = Color(0xFF8E8E93), textAlign = TextAlign.Center,
-                lineHeight = 20.sp
-            )
-            Spacer(modifier = Modifier.height(32.dp))
+    Box(modifier = rootModifier.background(SkieColors.White)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SkieTopBar(title = "Setup")
+            SkieStepProgress(totalSteps = 4, currentStep = 2)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text("Add Google Account", fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                    color = SkieColors.DeepNavy)
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "A Google account must be added now. After hardening, adding new accounts will be blocked for security.\n\nLog in to the account and return here.",
+                    fontSize = 14.sp, color = SkieColors.Grey, textAlign = TextAlign.Center,
+                    lineHeight = 20.sp
+                )
+                Spacer(modifier = Modifier.height(28.dp))
 
-            if (checked) {
-                Surface(
-                    color = if (hasGoogleAccount) Color(0xFF1C4532) else Color(0xFF3B1414),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                if (checked) {
+                    SkieCard(backgroundColor = if (hasGoogleAccount) SkieColors.SuccessBg else SkieColors.DangerBg) {
+                        Text(
+                            text = if (hasGoogleAccount)
+                                "✓ Google account detected"
+                            else
+                                "✗ No Google account found",
+                            modifier = Modifier.fillMaxWidth(),
+                            color = if (hasGoogleAccount) SkieColors.Success else SkieColors.Danger,
+                            fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+
+                // Open Settings → Accounts
+                OutlinedButton(
+                    onClick = {
+                        context.startActivity(Intent(android.provider.Settings.ACTION_ADD_ACCOUNT).apply {
+                            putExtra(android.provider.Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        })
+                    },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.DeepNavy)
                 ) {
-                    Text(
-                        text = if (hasGoogleAccount)
-                            "✓ Google account detected"
-                        else
-                            "✗ No Google account found",
-                        modifier = Modifier.padding(16.dp),
-                        color = if (hasGoogleAccount) Color(0xFF30D158) else Color(0xFFFF453A),
-                        fontSize = 14.sp, fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center
-                    )
+                    Text("Open Settings → Add Account", fontSize = 14.sp)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = { checkGoogleAccount() },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.SkyBlue)
+                ) {
+                    Text("Check Account Status", fontSize = 14.sp)
                 }
                 Spacer(modifier = Modifier.height(24.dp))
-            }
 
-            // Open Settings → Accounts
-            OutlinedButton(
-                onClick = {
-                    context.startActivity(Intent(android.provider.Settings.ACTION_ADD_ACCOUNT).apply {
-                        putExtra(android.provider.Settings.EXTRA_ACCOUNT_TYPES, arrayOf("com.google"))
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    })
-                },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-            ) {
-                Text("Open Settings → Add Account", fontSize = 14.sp)
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-
-            OutlinedButton(
-                onClick = { checkGoogleAccount() },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0A84FF))
-            ) {
-                Text("Check Account Status", fontSize = 14.sp)
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Button(
-                onClick = { if (hasGoogleAccount) onNext() },
-                enabled = hasGoogleAccount,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (hasGoogleAccount) Color(0xFF0A84FF) else Color(0xFF2C2C2E),
-                    contentColor = Color.White
-                )
-            ) {
-                Text("Continue", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Button(
+                    onClick = { if (hasGoogleAccount) onNext() },
+                    enabled = hasGoogleAccount,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (hasGoogleAccount) SkieColors.SkyBlue else SkieColors.Line,
+                        contentColor = if (hasGoogleAccount) Color.White else SkieColors.Grey
+                    )
+                ) {
+                    Text("Continue", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }
@@ -376,22 +377,19 @@ fun SkieWizardStep4AppManagement(
             }
     }
 
-    Box(modifier = rootModifier.background(Color(0xFF0A0A0F))) {
+    Box(modifier = rootModifier.background(SkieColors.White)) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text("App Management", fontSize = 26.sp, fontWeight = FontWeight.Bold,
-                    color = Color.White)
-                Spacer(modifier = Modifier.height(8.dp))
+            SkieTopBar(title = "App Management")
+            Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    "Toggle off apps you want to hide from the child. Settings and globally " +
-                            "required apps are always protected. Tap Save Changes to apply.",
-                    fontSize = 14.sp, color = Color(0xFF8E8E93), lineHeight = 20.sp
+                    "Turn off apps you want to hide from the child. Settings and globally " +
+                            "required apps are always protected.",
+                    fontSize = 14.sp, color = SkieColors.Grey, lineHeight = 20.sp
                 )
                 if (saveError != null) {
                     Spacer(modifier = Modifier.height(10.dp))
-                    Surface(color = Color(0xFF3B1414), shape = RoundedCornerShape(8.dp)) {
-                        Text(saveError!!, color = Color(0xFFFF453A), fontSize = 12.sp,
-                            modifier = Modifier.padding(10.dp))
+                    SkieCard(backgroundColor = SkieColors.DangerBg) {
+                        Text(saveError!!, color = SkieColors.Danger, fontSize = 12.sp)
                     }
                 }
             }
@@ -400,26 +398,19 @@ fun SkieWizardStep4AppManagement(
                 modifier = Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 24.dp)
+                    .padding(horizontal = 20.dp)
             ) {
                 apps.forEach { app ->
                     val isProtected = app.packageName in ALWAYS_PROTECTED || app.isGlobalWhitelisted
-                    Surface(
-                        color = Color(0xFF1C1C1E),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                    SkieCard(modifier = Modifier.padding(vertical = 4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(app.label, color = Color.White, fontSize = 15.sp,
+                                Text(app.label, color = SkieColors.Ink, fontSize = 15.sp,
                                     fontWeight = FontWeight.Medium)
                                 if (app.packageName in ALWAYS_PROTECTED) {
-                                    Text("Always protected", color = Color(0xFF636366), fontSize = 12.sp)
+                                    Text("Always protected", color = SkieColors.Grey, fontSize = 12.sp)
                                 } else if (app.isGlobalWhitelisted) {
-                                    Text("Required — locked on", color = Color(0xFF636366), fontSize = 12.sp)
+                                    Text("Required — locked on", color = SkieColors.Grey, fontSize = 12.sp)
                                 }
                             }
                             Switch(
@@ -428,8 +419,8 @@ fun SkieWizardStep4AppManagement(
                                 enabled = !isProtected,
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
-                                    checkedTrackColor = Color(0xFF30D158),
-                                    uncheckedTrackColor = Color(0xFF2C2C2E)
+                                    checkedTrackColor = SkieColors.SkyBlue,
+                                    uncheckedTrackColor = SkieColors.Line
                                 )
                             )
                         }
@@ -438,12 +429,17 @@ fun SkieWizardStep4AppManagement(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            Column(modifier = Modifier.padding(24.dp)) {
+            // Sticky bottom save bar — Apple Settings pattern for batch edits
+            Column(
+                modifier = Modifier
+                    .background(SkieColors.White)
+                    .padding(20.dp)
+            ) {
                 Button(
                     onClick = { saveChanges() },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF))
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = SkieColors.SkyBlue)
                 ) {
                     Text("Save Changes", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 }

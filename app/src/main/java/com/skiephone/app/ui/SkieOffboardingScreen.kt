@@ -21,6 +21,9 @@ import com.skiephone.app.compliance.SkieDehardenRunner
 import com.skiephone.app.compliance.SkieDehardenVerifier
 import com.skiephone.app.compliance.SkieRestoreAppsRunner
 import com.skiephone.app.policy.SkiePolicyEngine
+import com.skiephone.app.ui.theme.SkieCard
+import com.skiephone.app.ui.theme.SkieColors
+import com.skiephone.app.ui.theme.SkieTopBar
 
 /**
  * Offboarding / Uninstall flow.
@@ -119,45 +122,44 @@ fun SkieOffboardingScreen(
         }.start()
     }
 
-    Box(modifier = rootModifier.background(Color(0xFF0A0A0F))) {
-        Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(Modifier.height(16.dp))
-            Text("Offboarding", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
+    Box(modifier = rootModifier.background(SkieColors.White)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SkieTopBar(title = "Offboarding", onBack = onBack)
+            Column(
+                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+            Spacer(Modifier.height(8.dp))
             Text("Remove supervision and prepare to uninstall", fontSize = 14.sp,
-                color = Color(0xFF8E8E93), textAlign = TextAlign.Center)
-            Spacer(Modifier.height(32.dp))
+                color = SkieColors.Grey, textAlign = TextAlign.Center)
+            Spacer(Modifier.height(28.dp))
 
             when (stage) {
                 // ── Intro ─────────────────────────────────────────────────────────
                 0 -> {
-                    OffboardStepCard("1", "Deharden", "Removes all security restrictions applied during setup.", Color(0xFF0A84FF))
+                    OffboardStepCard("1", "Deharden", "Removes all security restrictions applied during setup.", SkieColors.SkyBlue)
                     Spacer(Modifier.height(8.dp))
-                    OffboardStepCard("2", "Verify", "Confirms every restriction was actually removed.", Color(0xFF30D158))
+                    OffboardStepCard("2", "Verify", "Confirms every restriction was actually removed.", SkieColors.Success)
                     Spacer(Modifier.height(8.dp))
-                    OffboardStepCard("3", "Restore All Apps", "Unsuspends and unhides every app on the device.", Color(0xFFFF9F0A))
+                    OffboardStepCard("3", "Restore All Apps", "Unsuspends and unhides every app on the device.", SkieColors.Warning)
                     Spacer(Modifier.height(8.dp))
-                    OffboardStepCard("4", "Remove Device Owner", "Permanently ends supervision of this device.", Color(0xFFFF453A))
+                    OffboardStepCard("4", "Remove Device Owner", "Permanently ends supervision of this device.", SkieColors.Danger)
                     Spacer(Modifier.height(24.dp))
-                    Surface(color = Color(0xFF2A1414), shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()) {
+                    SkieCard(backgroundColor = SkieColors.DangerBg) {
                         Text("This process is intended for when you no longer wish to supervise " +
-                                "this device, or before uninstalling SkieOS. Steps 1–3 can be re-run " +
+                                "this device, or before uninstalling Skiephone. Steps 1–3 can be re-run " +
                                 "safely. Step 4 is permanent.",
-                            color = Color(0xFFCC8888), fontSize = 13.sp, lineHeight = 18.sp,
-                            modifier = Modifier.padding(14.dp))
+                            color = SkieColors.Danger, fontSize = 13.sp, lineHeight = 18.sp)
                     }
                     Spacer(Modifier.height(24.dp))
                     Button(onClick = { startDeharden() },
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF))
+                        colors = ButtonDefaults.buttonColors(containerColor = SkieColors.SkyBlue)
                     ) { Text("Begin Offboarding", fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
                     Spacer(Modifier.height(12.dp))
                     TextButton(onClick = onBack) {
-                        Text("← Back", fontSize = 13.sp, color = Color(0xFF636366))
+                        Text("← Back", fontSize = 13.sp, color = SkieColors.Grey)
                     }
                 }
 
@@ -169,18 +171,18 @@ fun SkieOffboardingScreen(
                         3 -> "Step 3: Restoring all apps…"
                         else -> ""
                     }
-                    Text(stageLabel, fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                    Text(stageLabel, fontSize = 16.sp, color = SkieColors.Ink, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(24.dp))
                     LinearProgressIndicator(
                         progress = { animatedProgress },
                         modifier = Modifier.fillMaxWidth().height(6.dp),
-                        color = Color(0xFF0A84FF), trackColor = Color(0xFF2C2C2E)
+                        color = SkieColors.SkyBlue, trackColor = SkieColors.Line
                     )
                     Spacer(Modifier.height(16.dp))
-                    Text(progressLabel, fontSize = 13.sp, color = Color(0xFF8E8E93), textAlign = TextAlign.Center)
+                    Text(progressLabel, fontSize = 13.sp, color = SkieColors.Grey, textAlign = TextAlign.Center)
                     Spacer(Modifier.height(12.dp))
                     Text("Do not press back or close the screen until complete.",
-                        fontSize = 12.sp, color = Color(0xFFFF453A), textAlign = TextAlign.Center)
+                        fontSize = 12.sp, color = SkieColors.Danger, textAlign = TextAlign.Center)
                 }
 
                 // ── Confirm remove device owner ──────────────────────────────────
@@ -190,7 +192,7 @@ fun SkieOffboardingScreen(
                     val restoreFailed = restoreResults.count { !it.success }
 
                     Text("Steps 1–3 Complete", fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                        color = Color(0xFF30D158))
+                        color = SkieColors.Success)
                     Spacer(Modifier.height(16.dp))
 
                     SummaryRow("Restrictions removed", dehardenResults.size - dehardenFailed, dehardenResults.size)
@@ -199,28 +201,28 @@ fun SkieOffboardingScreen(
 
                     if (dehardenFailed > 0 || verifyFailed > 0 || restoreFailed > 0) {
                         Spacer(Modifier.height(12.dp))
-                        Surface(color = Color(0xFF2A1414), shape = RoundedCornerShape(10.dp),
+                        Surface(color = SkieColors.DangerBg, shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()) {
                             Text("Some items did not complete fully. You can re-run this process " +
                                     "from the start if needed before removing device owner.",
-                                color = Color(0xFFCC8888), fontSize = 12.sp, lineHeight = 16.sp,
+                                color = SkieColors.Danger, fontSize = 12.sp, lineHeight = 16.sp,
                                 modifier = Modifier.padding(12.dp))
                         }
                     }
 
                     Spacer(Modifier.height(28.dp))
-                    Surface(color = Color(0xFF2A1414), shape = RoundedCornerShape(12.dp),
+                    Surface(color = SkieColors.DangerBg, shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(18.dp)) {
                             Text("⚠ Final Step: Remove Device Owner", fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold, color = Color(0xFFFF453A))
+                                fontWeight = FontWeight.Bold, color = SkieColors.Danger)
                             Spacer(Modifier.height(8.dp))
                             Text("This device will become completely unsupervised. If given to a " +
                                     "child, they will have full open access with no restrictions. " +
                                     "This action cannot be undone.",
-                                color = Color(0xFFCC8888), fontSize = 13.sp, lineHeight = 18.sp)
+                                color = SkieColors.Danger, fontSize = 13.sp, lineHeight = 18.sp)
                             Spacer(Modifier.height(14.dp))
-                            Text("Type REMOVE to confirm:", color = Color(0xFF8E8E93), fontSize = 12.sp)
+                            Text("Type REMOVE to confirm:", color = SkieColors.Grey, fontSize = 12.sp)
                             Spacer(Modifier.height(6.dp))
                             OutlinedTextField(
                                 value = confirmText,
@@ -228,10 +230,10 @@ fun SkieOffboardingScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFFFF453A),
-                                    unfocusedBorderColor = Color(0xFF3A3A3C),
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White
+                                    focusedBorderColor = SkieColors.Danger,
+                                    unfocusedBorderColor = SkieColors.Line,
+                                    focusedTextColor = SkieColors.Ink,
+                                    unfocusedTextColor = SkieColors.Ink
                                 )
                             )
                         }
@@ -243,20 +245,20 @@ fun SkieOffboardingScreen(
                         modifier = Modifier.fillMaxWidth().height(52.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (confirmText.trim() == "REMOVE") Color(0xFFFF453A) else Color(0xFF2C2C2E)
+                            containerColor = if (confirmText.trim() == "REMOVE") SkieColors.Danger else SkieColors.Line
                         )
                     ) { Text("I understand, remove supervision", fontSize = 15.sp, fontWeight = FontWeight.SemiBold) }
                     Spacer(Modifier.height(12.dp))
                     TextButton(onClick = { startDeharden() }) {
-                        Text("Re-run steps 1–3", fontSize = 13.sp, color = Color(0xFF0A84FF))
+                        Text("Re-run steps 1–3", fontSize = 13.sp, color = SkieColors.SkyBlue)
                     }
                 }
 
                 // ── Removing owner (brief) ───────────────────────────────────────
                 5 -> {
-                    CircularProgressIndicator(color = Color(0xFF0A84FF))
+                    CircularProgressIndicator(color = SkieColors.SkyBlue)
                     Spacer(Modifier.height(16.dp))
-                    Text("Removing device owner…", fontSize = 14.sp, color = Color(0xFF8E8E93))
+                    Text("Removing device owner…", fontSize = 14.sp, color = SkieColors.Grey)
                 }
 
                 // ── Complete ──────────────────────────────────────────────────────
@@ -265,51 +267,54 @@ fun SkieOffboardingScreen(
                         Text("✅", fontSize = 56.sp)
                         Spacer(Modifier.height(16.dp))
                         Text("Offboarding Complete", fontSize = 22.sp, fontWeight = FontWeight.Bold,
-                            color = Color(0xFF30D158))
+                            color = SkieColors.Success)
                         Spacer(Modifier.height(12.dp))
-                        Surface(color = Color(0xFF1C1C1E), shape = RoundedCornerShape(12.dp),
+                        Surface(color = SkieColors.White, shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, SkieColors.Line),
                             modifier = Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(18.dp)) {
-                                Text("This device is no longer supervised by SkieOS.",
-                                    color = Color.White, fontSize = 14.sp, lineHeight = 20.sp)
+                                Text("This device is no longer supervised by Skiephone.",
+                                    color = SkieColors.Ink, fontSize = 14.sp, lineHeight = 20.sp)
                                 Spacer(Modifier.height(12.dp))
-                                Text("To finish removing the app:", color = Color(0xFF8E8E93), fontSize = 13.sp)
+                                Text("To finish removing the app:", color = SkieColors.Grey, fontSize = 13.sp)
                                 Spacer(Modifier.height(6.dp))
                                 Text("1. Open Settings\n2. Go to Apps\n3. Select SkieOS\n4. Tap Uninstall",
-                                    color = Color.White, fontSize = 14.sp, lineHeight = 22.sp)
+                                    color = SkieColors.Ink, fontSize = 14.sp, lineHeight = 22.sp)
                             }
                         }
                         Spacer(Modifier.height(20.dp))
                         Button(onClick = onFinished,
                             modifier = Modifier.fillMaxWidth().height(52.dp),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF))
+                            colors = ButtonDefaults.buttonColors(containerColor = SkieColors.SkyBlue)
                         ) { Text("Done", fontSize = 16.sp, fontWeight = FontWeight.SemiBold) }
                     } else {
                         Text("⚠", fontSize = 56.sp)
                         Spacer(Modifier.height(16.dp))
                         Text("Could Not Remove Device Owner", fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold, color = Color(0xFFFF453A))
+                            fontWeight = FontWeight.Bold, color = SkieColors.Danger)
                         Spacer(Modifier.height(8.dp))
                         Text(ownerRemoveError ?: "Unknown error. Please try again.",
-                            color = Color(0xFF8E8E93), fontSize = 13.sp, textAlign = TextAlign.Center)
+                            color = SkieColors.Grey, fontSize = 13.sp, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(20.dp))
-                        Button(onClick = { stage = 4 },
+                        OutlinedButton(onClick = { stage = 4 },
                             modifier = Modifier.fillMaxWidth().height(48.dp),
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1C1C1E))
-                        ) { Text("Try Again", fontSize = 15.sp, color = Color.White) }
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.DeepNavy)
+                        ) { Text("Try Again", fontSize = 15.sp) }
                     }
                 }
             }
             Spacer(Modifier.height(32.dp))
+        }
         }
     }
 }
 
 @Composable
 private fun OffboardStepCard(number: String, title: String, desc: String, color: Color) {
-    Surface(color = Color(0xFF1C1C1E), shape = RoundedCornerShape(12.dp),
+    Surface(color = SkieColors.White, shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, SkieColors.Line),
         modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(color = color.copy(alpha = 0.15f), shape = RoundedCornerShape(8.dp),
@@ -320,8 +325,8 @@ private fun OffboardStepCard(number: String, title: String, desc: String, color:
             }
             Spacer(Modifier.width(14.dp))
             Column {
-                Text(title, color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                Text(desc, color = Color(0xFF8E8E93), fontSize = 12.sp, lineHeight = 16.sp)
+                Text(title, color = SkieColors.DeepNavy, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text(desc, color = SkieColors.Grey, fontSize = 12.sp, lineHeight = 16.sp)
             }
         }
     }
@@ -329,13 +334,13 @@ private fun OffboardStepCard(number: String, title: String, desc: String, color:
 
 @Composable
 private fun SummaryRow(label: String, passed: Int, total: Int) {
-    val color = if (passed == total) Color(0xFF30D158) else Color(0xFFFF9F0A)
+    val color = if (passed == total) SkieColors.Success else SkieColors.Warning
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, color = Color(0xFF8E8E93), fontSize = 14.sp)
+        Text(label, color = SkieColors.Grey, fontSize = 14.sp)
         Text("$passed / $total", color = color, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
     }
 }

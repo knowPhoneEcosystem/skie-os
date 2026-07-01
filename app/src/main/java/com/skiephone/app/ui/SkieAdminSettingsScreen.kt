@@ -4,8 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +17,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.skiephone.app.auth.SkieAuthManager
+import com.skiephone.app.ui.theme.SkieCard
+import com.skiephone.app.ui.theme.SkieColors
+import com.skiephone.app.ui.theme.SkieSectionHeader
+import com.skiephone.app.ui.theme.SkieTopBar
 import com.skiephone.app.util.SkieLoader
 
 /**
@@ -64,30 +66,16 @@ fun SkieAdminSettingsScreen(
         )
     }
 
-    Box(
-        modifier = rootModifier
-            .background(Color(0xFF0A0A0F))
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back",
-                        tint = Color.White)
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Admin Settings", fontSize = 22.sp, fontWeight = FontWeight.Bold,
-                    color = Color.White)
-            }
-            Spacer(modifier = Modifier.height(32.dp))
+    Box(modifier = rootModifier.background(SkieColors.White)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SkieTopBar(title = "Settings", onBack = onBack)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp)
+            ) {
 
-            // Change PIN section
-            Text("Change PIN", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF8E8E93))
-            Spacer(modifier = Modifier.height(12.dp))
+            SkieSectionHeader("Change PIN")
 
             listOf(
                 "Current PIN" to currentPin to { v: String -> currentPin = v },
@@ -98,29 +86,29 @@ fun SkieAdminSettingsScreen(
                 OutlinedTextField(
                     value = value,
                     onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) setter(it) },
-                    label = { Text(label, color = Color(0xFF8E8E93)) },
+                    label = { Text(label, color = SkieColors.Grey) },
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color(0xFF0A84FF),
-                        unfocusedBorderColor = Color(0xFF3A3A3C),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        cursorColor = Color(0xFF0A84FF)
+                        focusedBorderColor = SkieColors.SkyBlue,
+                        unfocusedBorderColor = SkieColors.Line,
+                        focusedTextColor = SkieColors.Ink,
+                        unfocusedTextColor = SkieColors.Ink,
+                        cursorColor = SkieColors.SkyBlue
                     )
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
             if (error != null) {
-                Text(error!!, color = Color(0xFFFF453A), fontSize = 13.sp,
+                Text(error!!, color = SkieColors.Danger, fontSize = 13.sp,
                     textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
             }
             if (success != null) {
-                Text(success!!, color = Color(0xFF30D158), fontSize = 13.sp,
+                Text(success!!, color = SkieColors.Success, fontSize = 13.sp,
                     textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -128,23 +116,21 @@ fun SkieAdminSettingsScreen(
             Button(
                 onClick = { changePin() },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0A84FF))
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SkieColors.SkyBlue)
             ) {
                 Text("Change PIN", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
 
             Spacer(modifier = Modifier.height(32.dp))
-            Divider(color = Color(0xFF2C2C2E))
+            Divider(color = SkieColors.Line)
             Spacer(modifier = Modifier.height(24.dp))
 
             // Re-enroll MFA
-            Text("Authenticator App", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF8E8E93))
-            Spacer(modifier = Modifier.height(8.dp))
+            SkieSectionHeader("Authenticator App")
             Text(
                 "Lost access to your authenticator app? Re-scan the QR code to set it up again on a new device.",
-                fontSize = 13.sp, color = Color(0xFF636366), lineHeight = 18.sp
+                fontSize = 13.sp, color = SkieColors.Grey, lineHeight = 18.sp
             )
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -159,11 +145,12 @@ fun SkieAdminSettingsScreen(
                 OutlinedButton(
                     onClick = { showReenroll = true },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0A84FF))
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.SkyBlue)
                 ) {
                     Text("Re-enroll Authenticator", fontSize = 14.sp)
                 }
+            }
             }
         }
 

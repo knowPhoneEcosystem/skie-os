@@ -46,6 +46,17 @@ object SkieDehardenRunner {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 onComplete(results)
             }
+            // Mark device as no longer managed — this is the RTDB-backed gate that
+            // prevents effectiveApps enforcement from running immediately on the next
+            // app start after re-provisioning, regardless of whether deharden was
+            // triggered from the DPC app or the web dashboard.
+            try {
+                FirebaseDatabase.getInstance()
+                    .getReference("devices/$deviceId/isDeviceManaged")
+                    .setValue(false)
+            } catch (e: Exception) {
+                Log.e(TAG, "isDeviceManaged reset failed: ${e.message}")
+            }
             // Clear stale hardenLog key from the removed bulk-suspension model —
             // no longer corresponds to any active hardening step.
             try {

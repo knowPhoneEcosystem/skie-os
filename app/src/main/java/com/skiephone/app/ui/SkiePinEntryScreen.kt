@@ -187,21 +187,32 @@ fun SkiePinEntryScreen(
                                             Uri.parse("tel:$SUPPORT_PHONE")).apply {
                                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
                                     },
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
                                     shape = RoundedCornerShape(10.dp),
                                     colors = ButtonDefaults.outlinedButtonColors(
                                         contentColor = SkieColors.DeepNavy)
-                                ) { Text("📞 Call", fontSize = 13.sp) }
-
+                                ) {
+                                    Text("📞 Call Support", fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            Row {
                                 OutlinedButton(
                                     onClick = {
                                         val uri = Uri.parse("https://wa.me/$SUPPORT_WHATSAPP")
                                         context.startActivity(Intent(Intent.ACTION_VIEW, uri).apply {
                                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
                                     },
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.DeepNavy)
-                                ) { Text("💬 WhatsApp", fontSize = 13.sp) }
-
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = SkieColors.DeepNavy)
+                                ) {
+                                    Text("💬 WhatsApp Support", fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium)
+                                }
+                            }
+                            Row {
                                 OutlinedButton(
                                     onClick = {
                                         val intent = Intent(Intent.ACTION_SENDTO).apply {
@@ -211,9 +222,14 @@ fun SkiePinEntryScreen(
                                         }
                                         context.startActivity(intent)
                                     },
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SkieColors.DeepNavy)
-                                ) { Text("✉️ Email", fontSize = 13.sp) }
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = SkieColors.DeepNavy)
+                                ) {
+                                    Text("✉️ Email Support", fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium)
+                                }
                             }
                         }
                     }

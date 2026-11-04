@@ -192,6 +192,12 @@ class SkieCommandManager(private val context: Context) {
                                 context,
                                 onProgress = { _, _, _ -> /* headless */ },
                                 onComplete = { _ ->
+                                    // Mark device as no longer managed — critical for re-provisioning.
+                                    // SkieDehardenRunner also sets this, but we set it here too since
+                                    // the dashboard path is the one most likely to be called without
+                                    // the DPC app's own offboarding UI ever running.
+                                    database.getReference("devices/$deviceId/isDeviceManaged")
+                                        .setValue(false)
                                     database.getReference("devices/$deviceId/command").removeValue()
                                     database.getReference("devices/$deviceId/status").setValue("dehardened")
                                     Log.d(TAG, "Deharden complete (dashboard)")
@@ -340,7 +346,13 @@ class SkieCommandManager(private val context: Context) {
         } catch (e: Exception) { false }
 
         if (isSystemApp) {
-            // System apps cannot be uninstalled — disable them instead
+            // System apps cannot be uninstalled — disable them instead.
+            // Guard against hiding critical system packages that would break the device.
+            if (packageName in SkiePolicyEngine.SYSTEM_PROTECTED_PACKAGES_PUBLIC) {
+                Log.w(TAG, "uninstallApp: BLOCKED — $packageName is a protected system package")
+                writeUninstallResult(packageName, false, "protected_system_package")
+                return
+            }
             try {
                 dpm.setApplicationHidden(componentName, packageName, true)
                 Log.d(TAG, "uninstallApp: system app hidden (disabled): $packageName")

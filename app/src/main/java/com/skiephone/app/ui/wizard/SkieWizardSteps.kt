@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -30,7 +31,7 @@ import com.skiephone.app.ui.theme.SkieTopBar
 import com.skiephone.app.util.SkieLoader
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STEP 1: Scan QR → Link to Parent Dashboard
+// STEP 1: Show Device ID + QR → Link to Parent Dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -39,6 +40,29 @@ fun SkieWizardStep1Dashboard(
     onNext: () -> Unit,
     onSkip: () -> Unit
 ) {
+    val context = LocalContext.current
+    val deviceId = remember {
+        android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            android.provider.Settings.Secure.ANDROID_ID
+        )
+    }
+
+    // Generate QR bitmap from deviceId using ZXing BarcodeEncoder
+    val qrBitmap = remember(deviceId) {
+        try {
+            val encoder = com.journeyapps.barcodescanner.BarcodeEncoder()
+            val bitmap = encoder.encodeBitmap(
+                deviceId,
+                com.google.zxing.BarcodeFormat.QR_CODE,
+                400, 400
+            )
+            bitmap.asImageBitmap()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     Box(modifier = rootModifier.background(SkieColors.White)) {
         Column(modifier = Modifier.fillMaxSize()) {
             SkieTopBar(title = "Setup")
@@ -52,30 +76,72 @@ fun SkieWizardStep1Dashboard(
             ) {
                 Text("Connect to Dashboard", fontSize = 24.sp, fontWeight = FontWeight.Bold,
                     color = SkieColors.DeepNavy)
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "Scan the QR code on the Skie parent dashboard to link this device to your account.\nYou can do this later from the home screen.",
+                    "Scan this QR code from your Skie parent dashboard\nto link this device to your account.",
                     fontSize = 14.sp, color = SkieColors.Grey, textAlign = TextAlign.Center,
                     lineHeight = 20.sp
                 )
-                Spacer(modifier = Modifier.height(36.dp))
+                Spacer(modifier = Modifier.height(28.dp))
 
-                // QR Scan — uses ZXing (already in dependencies)
-                val context = LocalContext.current
+                // QR code display — dashboard scans this to link the device
+                if (qrBitmap != null) {
+                    Surface(
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, SkieColors.Line),
+                        color = SkieColors.White,
+                        modifier = Modifier.size(200.dp)
+                    ) {
+                        androidx.compose.foundation.Image(
+                            bitmap = qrBitmap,
+                            contentDescription = "Device QR Code",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(12.dp)
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(200.dp)
+                            .background(SkieColors.SkyTint,
+                                androidx.compose.foundation.shape.RoundedCornerShape(16.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("QR unavailable", color = SkieColors.Grey, fontSize = 12.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Device ID shown as text below QR for manual entry fallback
+                SkieCard(backgroundColor = SkieColors.SkyTint) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Device ID", fontSize = 11.sp, color = SkieColors.Grey,
+                            fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = deviceId,
+                            fontSize = 12.sp,
+                            color = SkieColors.Ink,
+                            fontWeight = FontWeight.Medium,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(28.dp))
+
                 Button(
-                    onClick = {
-                        // ZXing scan activity is started from Activity context
-                        // The result is handled in MainActivity via onActivityResult
-                        // For wizard we use a dedicated scan trigger
-                        val intent = Intent("com.skiephone.app.action.SCAN_QR")
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        try { context.startActivity(intent) } catch (e: Exception) { /* fallback */ }
-                    },
+                    onClick = onNext,
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = SkieColors.SkyBlue)
                 ) {
-                    Text("Scan QR Code", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Done — Continue", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 TextButton(onClick = onSkip) {
@@ -311,7 +377,11 @@ fun SkieWizardStep4AppManagement(
     fun saveChanges() {
         saveError = null
         val changed = apps.filter { originalStates[it.packageName] != it.enabled }
-        if (changed.isEmpty()) { onComplete(); return }
+        if (changed.isEmpty()) {
+            com.skiephone.app.policy.SkiePolicyEngine(context).setDeviceManaged(true)
+            onComplete()
+            return
+        }
 
         loading = true
         loadingMessage = "Saving ${changed.size} app${if (changed.size > 1) "s" else ""}…"
@@ -338,12 +408,18 @@ fun SkieWizardStep4AppManagement(
                         val existingKey = pkgToIndexKey[item.packageName]
                         val key = existingKey ?: nextIndex.toString().also { nextIndex++ }
                         try {
-                            // Write/merge the entry — preserves other fields (appName, category, etc.)
-                            // if the entry already existed, sets packageName + allowed either way.
+                            // Write/merge the entry — preserves other fields (category, etc.)
+                            // if the entry already existed. Always includes appName (the
+                            // resolved on-device label) so the dashboard never has to fall
+                            // back to displaying a raw package name — the dashboard itself
+                            // has no PackageManager access and can't resolve labels on its
+                            // own, so this device-side write is the only place that can.
                             effectiveRef.child(key).updateChildren(
                                 mapOf(
                                     "packageName" to item.packageName,
-                                    "allowed" to item.enabled
+                                    "appName" to item.label,
+                                    "allowed" to item.enabled,
+                                    "category" to "other"
                                 )
                             )
                         } catch (e: Exception) {
@@ -366,6 +442,11 @@ fun SkieWizardStep4AppManagement(
                         if (failed.isNotEmpty()) {
                             saveError = "Failed to enforce: ${failed.joinToString(", ")}. Please try again."
                         } else {
+                            // App policy confirmed and applied — device is now managed.
+                            // This flips isDeviceManaged=true in RTDB so that on any
+                            // subsequent app start, effectiveApps enforcement runs immediately
+                            // rather than waiting for onboarding again.
+                            com.skiephone.app.policy.SkiePolicyEngine(context).setDeviceManaged(true)
                             onComplete()
                         }
                     }

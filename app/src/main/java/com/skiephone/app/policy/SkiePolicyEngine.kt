@@ -43,11 +43,44 @@ class SkiePolicyEngine(private val context: Context) {
     private var policyListener: ValueEventListener? = null
     private var listenersStarted = false
 
+    /**
+     * Cached value of devices/{deviceId}/isDeviceManaged from RTDB.
+     * Fetched ONCE at start() — not re-read on every enforcement call.
+     * false = device is in onboarding/re-provisioning state, hold enforcement.
+     * true  = device is fully managed, enforce effectiveApps immediately.
+     *
+     * Only changes at well-defined lifecycle points:
+     *   true  — set after App Management saveChanges() completes in wizard
+     *   false — set when deharden completes (on-device or dashboard-triggered)
+     *
+     * This is deliberately RTDB-backed (not SharedPreferences) so that
+     * dashboard-triggered deharden correctly resets it without requiring
+     * the DPC app's own offboarding flow to run.
+     */
+    @Volatile private var isDeviceManaged: Boolean = false
+
     fun start() {
         Log.d(TAG, "start() deviceId:$deviceId isDeviceOwner:${isDeviceOwner()}")
         grantRequiredPermissions()
         repinLauncherHome()
         clearStaleSuspensions()
+        applyOwnerNameFromRtdb()
+        // Fetch isDeviceManaged ONCE — gates whether effectiveApps enforcement runs.
+        // Listeners register regardless so RTDB data is cached locally, but
+        // enforceFromSnapshot() is a no-op until isDeviceManaged = true.
+        rtdb.getReference("devices/$deviceId/isDeviceManaged")
+            .get()
+            .addOnSuccessListener { snap ->
+                isDeviceManaged = snap.getValue(Boolean::class.java) ?: false
+                Log.d(TAG, "start: isDeviceManaged=$isDeviceManaged")
+            }
+            .addOnFailureListener {
+                // On network failure, default to false — never enforce during
+                // an uncertain state. Safe-fail: worst case is apps aren't
+                // suspended during a connectivity blip on startup.
+                isDeviceManaged = false
+                Log.w(TAG, "start: isDeviceManaged fetch failed — defaulting to false")
+            }
         // Pre-load globalPolicy from RTDB cache immediately — available before Firestore auth
         rtdb.getReference("devices/$deviceId/globalPolicyCache")
             .get()
@@ -60,6 +93,58 @@ class SkiePolicyEngine(private val context: Context) {
                 }
             }
         listenGlobalPolicy()
+    }
+
+    /**
+     * Sets devices/{deviceId}/isDeviceManaged in RTDB and updates the cached
+     * local value immediately so enforcement gates take effect without waiting
+     * for a network round-trip.
+     */
+    fun setDeviceManaged(managed: Boolean) {
+        isDeviceManaged = managed
+        rtdb.getReference("devices/$deviceId/isDeviceManaged").setValue(managed)
+        Log.d(TAG, "setDeviceManaged: $managed")
+    }
+
+    /**
+     * Saves the device owner's name to RTDB and immediately applies it as the
+     * DPM organisation name — this replaces the generic "Your organization"
+     * string on the lock screen, MDM dialogs, and system-managed device UI
+     * everywhere Android surfaces it after device owner provisioning.
+     */
+    fun saveOwnerName(name: String) {
+        if (!isDeviceOwner()) {
+            Log.w(TAG, "saveOwnerName: not device owner — skipping")
+            return
+        }
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        // Persist to RTDB so it survives re-provisioning
+        rtdb.getReference("devices/$deviceId/ownerName").setValue(trimmed)
+        // Apply immediately via DPM
+        try {
+            dpm.setOrganizationName(admin, trimmed)
+            Log.d(TAG, "saveOwnerName: organisation name set to '$trimmed'")
+        } catch (e: Exception) {
+            Log.e(TAG, "saveOwnerName: setOrganizationName failed — ${e.message}")
+        }
+    }
+
+    private fun applyOwnerNameFromRtdb() {
+        if (!isDeviceOwner()) return
+        rtdb.getReference("devices/$deviceId/ownerName")
+            .get()
+            .addOnSuccessListener { snap ->
+                val name = snap.getValue(String::class.java)?.trim()
+                if (!name.isNullOrBlank()) {
+                    try {
+                        dpm.setOrganizationName(admin, name)
+                        Log.d(TAG, "applyOwnerNameFromRtdb: applied '$name'")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "applyOwnerNameFromRtdb: ${e.message}")
+                    }
+                }
+            }
     }
 
     fun stop() {
@@ -119,6 +204,12 @@ class SkiePolicyEngine(private val context: Context) {
     }
 
     private fun enforceFromSnapshot(snapshot: DataSnapshot) {
+        // Hold enforcement during onboarding / re-provisioning — only enforce
+        // once the parent has completed App Management and confirmed their app list.
+        if (!isDeviceManaged) {
+            Log.d(TAG, "enforceFromSnapshot: skipping — isDeviceManaged=false (onboarding state)")
+            return
+        }
         val pkg = snapshot.child("packageName").getValue(String::class.java) ?: snapshot.key ?: return
         val rawAllowed = snapshot.child("allowed").value
         val allowed = when (rawAllowed) {
@@ -141,8 +232,14 @@ class SkiePolicyEngine(private val context: Context) {
      * Public so the App Management "Save Changes" flow can invoke this directly after
      * its own RTDB write succeeds, instead of going through a listener round-trip.
      */
+    private val SYSTEM_PROTECTED_PACKAGES =
+        SYSTEM_PROTECTED_PACKAGES_PUBLIC + context.packageName
+
     fun enforceOneApp(pkg: String, allowed: Boolean): Boolean {
-        if (pkg == context.packageName) return true // never touch self
+        if (pkg in SYSTEM_PROTECTED_PACKAGES) {
+            Log.w(TAG, "enforceOneApp: BLOCKED — $pkg is a protected system package")
+            return true // treat as success so callers don't retry
+        }
         if (!isDeviceOwner()) { Log.w(TAG, "enforceOneApp: not device owner"); return false }
         return try {
             if (allowed) {
@@ -557,6 +654,25 @@ class SkiePolicyEngine(private val context: Context) {
     companion object {
         private const val TAG = "SkiePolicyEngine"
         const val PLAY_SERVICES_PKG = "com.google.android.gms"
+
+        /**
+         * Public mirror of SYSTEM_PROTECTED_PACKAGES for use by other classes
+         * (e.g. SkieCommandManager, SkieRestoreAppsRunner) that need to apply
+         * the same protection without duplicating the list. Does not include
+         * context.packageName (the DPC app itself) since that's context-dependent —
+         * callers must add their own package name check separately.
+         */
+        val SYSTEM_PROTECTED_PACKAGES_PUBLIC = setOf(
+            "com.android.systemui",
+            "com.android.settings",
+            "com.android.vending",
+            "com.google.android.gms",
+            "com.google.android.packageinstaller",
+            "com.android.packageinstaller",
+            "com.android.phone",
+            "com.google.android.dialer"
+        )
+
         const val STEP_DISALLOW_FACTORY_RESET        = "disallow_factory_reset"
         const val STEP_DISALLOW_SAFE_BOOT            = "disallow_safe_boot"
         const val STEP_DISALLOW_USB_FILE_TRANSFER    = "disallow_usb_file_transfer"

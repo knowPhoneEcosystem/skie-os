@@ -65,6 +65,7 @@ private enum class Screen {
     CHECK_FAILED,
     PIN_SETUP,
     TOTP_ENROLL,
+    OWNER_NAME,
     PIN_ENTRY,
     WIZARD,
     ADMIN_HOME,
@@ -164,116 +165,149 @@ private fun SkieApp(versionName: String, versionCode: Int) {
     // each screen receives the modifier as a parameter or applies it internally.
     // We handle it here by passing a callback that each screen calls on its root Box.
     WithBottomNavIfTab {
-    when (screen) {
-        Screen.CHILD -> SkieChildScreen(
-            currentVersionName = versionName,
-            currentVersionCode = versionCode,
-            rootModifier = rootModifier,
-            onAdminPortalClick = { goToAdminPortal() }
-        )
-
-        Screen.CHECKING -> {
-            SkieChildScreen(
+        when (screen) {
+            Screen.CHILD -> SkieChildScreen(
                 currentVersionName = versionName,
                 currentVersionCode = versionCode,
                 rootModifier = rootModifier,
-                onAdminPortalClick = {}
+                onAdminPortalClick = { goToAdminPortal() }
             )
-            com.skiephone.app.util.SkieLoader(checkStatusMessage)
-        }
 
-        Screen.CHECK_FAILED -> SkieCheckFailedScreen(
-            rootModifier = rootModifier,
-            onRetry = { goToAdminPortal() },
-            onCancel = { screen = Screen.CHILD }
-        )
-
-        Screen.PIN_SETUP -> SkiePinSetupScreen(
-            rootModifier = rootModifier,
-            onPinSaved = { screen = Screen.TOTP_ENROLL }
-        )
-
-        Screen.TOTP_ENROLL -> SkieTotpEnrollScreen(
-            rootModifier = rootModifier,
-            onEnrolled = {
-                screen = if (!SkiePrefManager.isWizardComplete(context))
-                    Screen.WIZARD else Screen.ADMIN_HOME
-            }
-        )
-
-        Screen.PIN_ENTRY -> SkiePinEntryScreen(
-            rootModifier = rootModifier,
-            onAuthenticated = {
-                screen = Screen.CHECKING
-                checkStatusMessage = "Checking…"
-                SkieAuthManager.isTotpEnrolled(
-                    context,
-                    onResult = { enrolled ->
-                        screen = when {
-                            !enrolled -> Screen.TOTP_ENROLL
-                            !SkiePrefManager.isWizardComplete(context) -> Screen.WIZARD
-                            else -> Screen.ADMIN_HOME
-                        }
-                    },
-                    onRetrying = { attempt ->
-                        checkStatusMessage = "Still checking… (attempt $attempt)"
-                    },
-                    onGiveUp = {
-                        screen = Screen.CHECK_FAILED
-                    }
+            Screen.CHECKING -> {
+                SkieChildScreen(
+                    currentVersionName = versionName,
+                    currentVersionCode = versionCode,
+                    rootModifier = rootModifier,
+                    onAdminPortalClick = {}
                 )
-            },
-            onBack = { screen = Screen.CHILD }
-        )
+                com.skiephone.app.util.SkieLoader(checkStatusMessage)
+            }
 
-        Screen.WIZARD -> SkieWizardHost(
-            rootModifier = rootModifier,
-            onComplete = { screen = Screen.ADMIN_HOME }
-        )
+            Screen.CHECK_FAILED -> SkieCheckFailedScreen(
+                rootModifier = rootModifier,
+                onRetry = { goToAdminPortal() },
+                onCancel = { screen = Screen.CHILD }
+            )
 
-        Screen.ADMIN_HOME -> SkieAdminHomeScreen(
-            versionName = versionName,
-            rootModifier = rootModifier,
-            onStepCard = { step ->
-                screen = when (step) {
-                    1 -> Screen.STEP_1; 2 -> Screen.STEP_2
-                    3 -> Screen.STEP_3; 4 -> Screen.STEP_4
-                    else -> Screen.ADMIN_HOME
+            Screen.PIN_SETUP -> SkiePinSetupScreen(
+                rootModifier = rootModifier,
+                onPinSaved = { screen = Screen.TOTP_ENROLL }
+            )
+
+            Screen.TOTP_ENROLL -> SkieTotpEnrollScreen(
+                rootModifier = rootModifier,
+                onEnrolled = {
+                    // After TOTP, always go to owner name entry — even on re-provisioning,
+                    // SkieOwnerNameScreen fetches and pre-fills the existing name from RTDB
+                    // so the user just taps Next without retyping.
+                    screen = Screen.OWNER_NAME
                 }
-            },
-            onSettings = { screen = Screen.ADMIN_SETTINGS },
-            onBack = { screen = Screen.CHILD },
-            onOffboarding = { screen = Screen.OFFBOARDING }
-        )
+            )
 
-        Screen.ADMIN_SETTINGS -> SkieAdminSettingsScreen(
-            rootModifier = rootModifier,
-            onBack = { screen = Screen.ADMIN_HOME }
-        )
+            Screen.OWNER_NAME -> SkieOwnerNameScreen(
+                rootModifier = rootModifier,
+                onComplete = {
+                    screen = if (!SkiePrefManager.isWizardComplete(context))
+                        Screen.WIZARD else Screen.ADMIN_HOME
+                }
+            )
 
-        Screen.OFFBOARDING -> SkieOffboardingScreen(
-            rootModifier = rootModifier,
-            onBack = { screen = Screen.ADMIN_HOME },
-            onFinished = { screen = Screen.CHILD }
-        )
+            Screen.PIN_ENTRY -> SkiePinEntryScreen(
+                rootModifier = rootModifier,
+                onAuthenticated = {
+                    screen = Screen.CHECKING
+                    checkStatusMessage = "Checking…"
+                    SkieAuthManager.isTotpEnrolled(
+                        context,
+                        onResult = { enrolled ->
+                            if (!enrolled) {
+                                screen = Screen.TOTP_ENROLL
+                                return@isTotpEnrolled
+                            }
+                            // TOTP confirmed — now check if owner name has been set.
+                            // If missing (e.g. existing install before this feature was added,
+                            // or a re-provision that skipped the name step), route to OWNER_NAME.
+                            val deviceId = android.provider.Settings.Secure.getString(
+                                context.contentResolver,
+                                android.provider.Settings.Secure.ANDROID_ID
+                            )
+                            com.google.firebase.database.FirebaseDatabase.getInstance()
+                                .getReference("devices/$deviceId/ownerName")
+                                .get()
+                                .addOnSuccessListener { snap ->
+                                    val hasName = snap.exists() &&
+                                            snap.getValue(String::class.java)?.isNotBlank() == true
+                                    screen = when {
+                                        !hasName -> Screen.OWNER_NAME
+                                        !SkiePrefManager.isWizardComplete(context) -> Screen.WIZARD
+                                        else -> Screen.ADMIN_HOME
+                                    }
+                                }
+                                .addOnFailureListener {
+                                    // On failure, proceed without blocking on name check
+                                    screen = if (!SkiePrefManager.isWizardComplete(context))
+                                        Screen.WIZARD else Screen.ADMIN_HOME
+                                }
+                        },
+                        onRetrying = { attempt ->
+                            checkStatusMessage = "Still checking… (attempt $attempt)"
+                        },
+                        onGiveUp = {
+                            screen = Screen.CHECK_FAILED
+                        }
+                    )
+                },
+                onBack = { screen = Screen.CHILD }
+            )
 
-        Screen.STEP_1 -> SkieWizardStep1Dashboard(
-            rootModifier = rootModifier,
-            onNext = { screen = Screen.ADMIN_HOME },
-            onSkip = { screen = Screen.ADMIN_HOME }
-        )
-        Screen.STEP_2 -> SkieWizardStep2GoogleAccount(
-            rootModifier = rootModifier,
-            onNext = { screen = Screen.ADMIN_HOME }
-        )
-        Screen.STEP_3 -> SkieWizardStep3Compliance(
-            rootModifier = rootModifier,
-            onComplete = { screen = Screen.ADMIN_HOME }
-        )
-        Screen.STEP_4 -> SkieWizardStep4AppManagement(
-            rootModifier = rootModifier,
-            onComplete = { screen = Screen.ADMIN_HOME }
-        )
-    }
+            Screen.WIZARD -> SkieWizardHost(
+                rootModifier = rootModifier,
+                onComplete = { screen = Screen.ADMIN_HOME }
+            )
+
+            Screen.ADMIN_HOME -> SkieAdminHomeScreen(
+                versionName = versionName,
+                rootModifier = rootModifier,
+                onStepCard = { step ->
+                    screen = when (step) {
+                        1 -> Screen.STEP_1; 2 -> Screen.STEP_2
+                        3 -> Screen.STEP_3; 4 -> Screen.STEP_4
+                        else -> Screen.ADMIN_HOME
+                    }
+                },
+                onSettings = { screen = Screen.ADMIN_SETTINGS },
+                onBack = { screen = Screen.CHILD },
+                onOffboarding = { screen = Screen.OFFBOARDING }
+            )
+
+            Screen.ADMIN_SETTINGS -> SkieAdminSettingsScreen(
+                rootModifier = rootModifier,
+                onBack = { screen = Screen.ADMIN_HOME }
+            )
+
+            Screen.OFFBOARDING -> SkieOffboardingScreen(
+                rootModifier = rootModifier,
+                onBack = { screen = Screen.ADMIN_HOME },
+                onFinished = { screen = Screen.CHILD }
+            )
+
+            Screen.STEP_1 -> SkieWizardStep1Dashboard(
+                rootModifier = rootModifier,
+                onNext = { screen = Screen.ADMIN_HOME },
+                onSkip = { screen = Screen.ADMIN_HOME }
+            )
+            Screen.STEP_2 -> SkieWizardStep2GoogleAccount(
+                rootModifier = rootModifier,
+                onNext = { screen = Screen.ADMIN_HOME }
+            )
+            Screen.STEP_3 -> SkieWizardStep3Compliance(
+                rootModifier = rootModifier,
+                onComplete = { screen = Screen.ADMIN_HOME }
+            )
+            Screen.STEP_4 -> SkieWizardStep4AppManagement(
+                rootModifier = rootModifier,
+                onComplete = { screen = Screen.ADMIN_HOME }
+            )
+        }
     }
 }
